@@ -1,0 +1,9 @@
+.ipynb
+Nqs2
+nqs
+qmtk
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
