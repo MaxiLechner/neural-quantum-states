@@ -5,15 +5,22 @@ import jax.numpy as np
 def psi(predictions):
     """computes the wavefunction psi from the unormalized input vectors
     given by the output of the autoregressive model"""
+    lnpsi, lnpsi_i = logpsi(predictions)
+    psi_i = np.exp(lnpsi_i)
+    psi = np.exp(lnpsi)
+    return psi, psi_i
+
+
+def logpsi(predictions):
+    """computes the log-wavefunction from the unormalized input vectors
+    given by the output of the autoregressive model"""
     l2norm = np.exp(predictions)
     l2norm = np.absolute(l2norm) ** 2
     l2norm = np.sum(l2norm, axis=2)
     l2norm = np.expand_dims(l2norm, axis=2)
     lnpsi_i = predictions - 0.5 * np.log(l2norm)
-    psi_i = np.exp(lnpsi_i)
     lnpsi = np.sum(lnpsi_i, axis=1)
-    psi = np.exp(lnpsi)
-    return psi, psi_i
+    return lnpsi, lnpsi_i
 
 
 # def sample(psi, key, i):
