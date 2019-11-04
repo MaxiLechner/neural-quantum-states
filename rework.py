@@ -16,6 +16,8 @@ from jax import random
 
 from functools import partial
 
+from jax.lib import pytree
+
 # import pdb
 
 
@@ -71,9 +73,6 @@ def sample_one_batch(net, key, data):
     return data
 
 
-from jax.lib import pytree
-
-
 def make_complex(state):
     """turns the real valued state into complex form, function modeled after tree_util functions like tree_map"""
     a, b = state
@@ -123,10 +122,12 @@ out_shape, net_params = net_init(subkey, in_shape)
 data = random.bernoulli(key, 0.2, (B, N, 1)) * 2 - 1.0
 
 net = partial(net_apply, net_params)
+lpsi = partial(lpsi, net)
 sob = sample_one_batch(net, key, data)
 
 # print(lpsi(sob))
 
+# print(sob)
 # eloc = Eloc(lpsi, sob)
 # mean = np.mean(eloc.conj())
 # print(eloc)
