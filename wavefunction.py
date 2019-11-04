@@ -1,4 +1,4 @@
-# from jax import random
+from jax import random, grad
 import jax.numpy as np
 
 
@@ -8,7 +8,8 @@ def psi(predictions):
     lnpsi, lnpsi_i = logpsi(predictions)
     psi_i = np.exp(lnpsi_i)
     psi = np.exp(lnpsi)
-    return psi, psi_i
+    p2 = np.prod(psi_i, axis=1)
+    return psi, p2, psi_i
 
 
 def logpsi(predictions):
@@ -23,17 +24,17 @@ def logpsi(predictions):
     return lnpsi, lnpsi_i
 
 
-# def sample(psi, key, i):
-#     """draws samples from the wavefunction psi"""
-#     res = psi
-#     sqnorm = (np.linalg.norm(res, axis=2) ** 2)[0][i]
-#     rand = random.bernoulli(key, sqnorm) * 2 - 1
-#     # print(sqnorm,rand)
-#     for i in range(N):
-#         vis = predictions(data)
-#         # print(vis)
-#         key, subkey = random.split(key)
-#         ss = sample(vis, key, i)
-#         print(ss)
-#         data[0][i] = rand
-#     return data
+def sample(state, key, i, N):
+    """draws samples from the wavefunction psi"""
+    wf = psi(state)
+    sqnorm = (np.linalg.norm(psi, axis=2) ** 2)[0][i]
+    rand = random.bernoulli(key, sqnorm) * 2 - 1
+    # print(sqnorm,rand)
+    for i in range(N):
+        wavefunction = psi(state)
+        # print(vis)
+        key, subkey = random.split(key)
+        ss = sample(vis, key, i)
+        print(ss)
+        data[0][i] = rand
+    return data
