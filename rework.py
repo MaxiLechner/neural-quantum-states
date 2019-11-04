@@ -55,12 +55,8 @@ def lpsi(net, data):
         B, N, 1
     )
 
-    # arr2 = arr[:,np.arange(arr.shape[1]),index]
-    # arr3 = arr2[:,:,np.newaxis]
-    # logpsi = arr3 - 0.5*np.log(nc)
     logpsi = vi - 0.5 * np.log(nc)
     logpsi = np.sum(logpsi, axis=1)
-    # return logpsi
     return np.real(logpsi), np.imag(logpsi)
 
 
@@ -125,42 +121,14 @@ key, subkey = random.split(key)
 in_shape = (1, N, 1)
 out_shape, net_params = net_init(subkey, in_shape)
 data = random.bernoulli(key, 0.2, (B, N, 1)) * 2 - 1.0
-# net_apply = jit(net_apply)
 
-
-# def Eloc_grad(Eloc, lpsi, net_params, state):
-#     eloc = Eloc(lpsi, net_params, state)
-#     eloc_mean = np.mean(eloc.conj())
-
-
-# logpsi = partial(lpsi, net_params)
 net = partial(net_apply, net_params)
 sob = sample_one_batch(net, key, data)
 
-# Eloc(logpsi, sob)
+# print(lpsi(sob))
 
-print(lpsi(net, sob))
-
-eloc = Eloc(lpsi, sob)
-mean = np.mean(eloc.conj())
-print(eloc)
-print(mean)
-print(eloc - mean)
-
-
-# opt_init, opt_update, get_params = optimizers.momentum(step_size=1e-3, mass=0.9)
-
-# # Define a compiled update step
-# #@jit
-# def step(i, opt_state, batch):
-#     params = get_params(opt_state)
-#     g = jax.jacrev(lpsi)(params, batch)
-#     return opt_update(i, g, opt_state)
-
-
-# # Optimize parameters in a loop
-# opt_state = opt_init(net_params)
-# for i in range(10):
-#     opt_state = step(i, opt_state, data)
-# net_params = get_params(opt_state)
-# #print(net_params)
+# eloc = Eloc(lpsi, sob)
+# mean = np.mean(eloc.conj())
+# print(eloc)
+# print(mean)
+# print(eloc - mean)
