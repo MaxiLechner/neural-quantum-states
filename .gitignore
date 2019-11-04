@@ -7,3 +7,9 @@ qmtk
 #!.vscode/tasks.json
 #!.vscode/launch.json
 #!.vscode/extensions.json
+__pycache__/ising1d.cpython-37.pyc
+__pycache__/masked_conv_layer.cpython-37.pyc
+__pycache__/network.cpython-37.pyc
+__pycache__/wavefunction.cpython-37.pyc
+nqs_jax.py
+test.py
