@@ -48,7 +48,7 @@ def lpsi(net, data):
 
     idx = (data + 1) / 2
     idx = idx.astype(int)
-    B, N, M = data.shape
+    B, N, _ = data.shape
     splits = np.split(arr, B)
     splits = [i.reshape(N, 2) for i in splits]
     isplits = np.split(idx, B)
