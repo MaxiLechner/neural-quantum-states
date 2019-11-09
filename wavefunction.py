@@ -18,11 +18,11 @@ def compute_probs(arr):
     return probs
 
 
-def lpsi(net, data):
+def lpsi(net_apply, net_params, data):
     """compute logpsi for a batch of samples. As the network returns
     the amplitude for both up and down states we need to pick the
     right amplitude by indexing according to the samples"""
-    arr = net(data)
+    arr = net_apply(net_params, data)
     arr = real_to_complex(arr)
     tc = np.exp(arr)
     nc = np.linalg.norm(tc, 2, axis=2, keepdims=True) ** 2
