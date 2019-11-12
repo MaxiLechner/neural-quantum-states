@@ -1,5 +1,6 @@
 import jax.numpy as np
 from jax.lib import pytree
+import pdb
 
 
 def real_to_complex(arr):
@@ -18,6 +19,30 @@ def compute_probs(arr):
     return probs
 
 
+def expand_dimensions(w, n):
+    """expand dims of the first array by adding np.newaxis on the
+    right side to match the dimension of the second array"""
+    n = n.shape
+    length = len(n) - 1
+    shape = (n[0],) + (1,) * length
+    return w.reshape(shape)
+
+
+def apply_elementwise(eloc, jac):
+    """applies the local energy in an elementwise fashion to the jacobian params,
+    function modeled after tree_util functions like tree_map"""
+    leaves, treedef = pytree.flatten(jac)
+    out = []
+    for i in leaves:
+        i = expand_dimensions(eloc, i) * i
+        i = i.real  # * -1
+        i = i.mean(axis=0)
+        i = np.squeeze(i, axis=0)
+        i = 2 * i
+        out.append(i)
+    return treedef.unflatten(out)
+
+
 def lpsi(net_apply, net_params, data):
     """compute logpsi for a batch of samples. As the network returns
     the amplitude for both up and down states we need to pick the
@@ -28,7 +53,7 @@ def lpsi(net_apply, net_params, data):
     nc = np.linalg.norm(tc, 2, axis=2, keepdims=True) ** 2
 
     idx = (data + 1) / 2
-    idx = idx.astype(int)
+    idx = idx.astype("int32")
     B, N, _ = data.shape
     splits = np.split(arr, B)
     splits = [i.reshape(N, 2) for i in splits]
