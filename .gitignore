@@ -13,3 +13,6 @@ __pycache__/network.cpython-37.pyc
 __pycache__/wavefunction.cpython-37.pyc
 nqs_jax.py
 test.py
+__pycache__/rework.cpython-37.pyc
+__pycache__/sampler.cpython-37.pyc
+todo.txt
