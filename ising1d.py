@@ -1,17 +1,16 @@
 import jax
 from jax import random
 import jax.numpy as np
+from jax import jit
+from jax.experimental import optimizers
+
 from network import net
 from wavefunction import lpsi, make_complex, compute_probs, apply_elementwise
-from jax import jit, vmap
 
-from jax.experimental import optimizers
 from time import time
-
 import matplotlib.pyplot as plt
-
 from functools import partial
-import pdb
+
 
 # from jax.lax import fori_loop
 
@@ -23,7 +22,7 @@ def model2(net_apply, net_params, lpsi, Eloc):
             vi = net_apply(net_params, data)
             probs = compute_probs(vi)
             key, subkey = random.split(key)
-            sample = random.bernoulli(subkey, probs[:, i, 0]) * 2 - 1.0
+            sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
             sample = sample.reshape(data.shape[0], 1)
             data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
         return data
@@ -68,7 +67,7 @@ def sample(net_apply, net_params, key):
         vi = net_apply(net_params, data)
         probs = compute_probs(vi)
         key, subkey = random.split(key)
-        sample = random.bernoulli(subkey, probs[:, i, 0]) * 2 - 1.0
+        sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
         sample = sample.reshape(data.shape[0], 1)
         data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
     return key, data
@@ -93,7 +92,6 @@ def energy(net_apply, net_params, state, lpsi):
     for i in range(state.shape[1] - 1):
         E -= state[:, i] * state[:, i + 1] - amplitude_diff(state, i)
     E -= amplitude_diff(state, -1)
-    # print(E)
     return E
 
 
@@ -187,7 +185,7 @@ if __name__ == "__main__":
     # print(energy)
     # print(grad[0][0][1])
 
-    opt_init, opt_update, get_params = optimizers.adam(1e-02)
+    opt_init, opt_update, get_params = optimizers.adam(1e-03)
 
     E = []
     mag = []
@@ -198,11 +196,12 @@ if __name__ == "__main__":
     plt.show(block=False)
 
     opt_state = opt_init(net_params)
-    for i in range(35):
+    for i in range(1000):
         start_time = time()
         opt_state = step(i, key, opt_state)
         end_time = time()
-        callback((E, mag, end_time, start_time), i)
+        if i % 25 == 0:
+            callback((E, mag, end_time, start_time), i)
 
     net_params = get_params(opt_state)
     plt.show(block=True)
@@ -212,14 +211,14 @@ if __name__ == "__main__":
     # print("Magnetization: ", np.mean(np.array(mag)[750:]))
     # print(gs_energy)
 
-    for i in range(1):
-        key, s = sample(net_apply, net_params, key)
-        print(s)
-        e = energy(net_apply, net_params, s, lpsi)
-        print(e)
-        print(np.mean(e))
-        print("=" * 100)
-    pdb.set_trace()
+    # for i in range(1):
+    #     key, s = sample(net_apply, net_params, key)
+    #     print(s)
+    #     e = energy(net_apply, net_params, s, lpsi)
+    #     print(e)
+    #     print(np.mean(e))
+    #     print("=" * 100)
+    # pdb.set_trace()
 
     # plt.plot(E)
     # plt.plot(mag)
