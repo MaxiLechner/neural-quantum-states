@@ -1,6 +1,5 @@
 import jax.numpy as np
 from jax.lib import pytree
-import pdb
 
 
 def real_to_complex(arr):
@@ -35,7 +34,7 @@ def apply_elementwise(eloc, jac):
     out = []
     for i in leaves:
         i = expand_dimensions(eloc, i) * i
-        i = i.real  # * -1
+        i = i.real
         i = i.mean(axis=0)
         i = np.squeeze(i, axis=0)
         i = 2 * i
