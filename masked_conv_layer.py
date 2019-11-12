@@ -76,7 +76,7 @@ def MaskedConv1d(
         W, b = params
         return (
             lax.conv_general_dilated(
-                inputs, W, strides, padding, one, one, dimension_numbers
+                inputs, W * filters, strides, padding, one, one, dimension_numbers
             )
             + b
         )
