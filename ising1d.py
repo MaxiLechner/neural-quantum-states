@@ -2,17 +2,13 @@ import jax
 from jax import random
 import jax.numpy as np
 from jax import jit
-from jax.experimental import optimizers
 
-from network import net
-from wavefunction import lpsi, make_complex, compute_probs, apply_elementwise
+from wavefunction import lpsi
+from sampler import sample
+from util import make_complex, apply_elementwise
 
-from time import time
 import matplotlib.pyplot as plt
 from functools import partial
-
-
-# from jax.lax import fori_loop
 
 
 def initialize_ising1d(batchSize, numSpins, network):
@@ -98,18 +94,6 @@ def initialize_ising1d(batchSize, numSpins, network):
 #     return sample, energy, grad
 
 
-@partial(jit, static_argnums=(0,))
-def sample(net_apply, net_params, key, data):
-    for i in range(data.shape[1]):
-        vi = net_apply(net_params, data)
-        probs = compute_probs(vi)
-        key, subkey = random.split(key)
-        sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
-        sample = sample.reshape(data.shape[0], 1)
-        data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
-    return key, data
-
-
 @partial(jit, static_argnums=(0, 3))
 def energy(net_apply, net_params, state, lpsi):
     @jit
@@ -132,33 +116,6 @@ def energy(net_apply, net_params, state, lpsi):
     return E
 
 
-# @partial(jit, static_argnums=(0, 3))
-def energy2(net_apply, net_params, state, lpsi):
-    # @jit
-    def amplitude_diff(state, i):
-        """logpsi returns the real and the imaginary part seperately,
-        we therefor need to recombine them into a complex valued array"""
-        flip_i = np.ones(state.shape)
-        flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-        fliped = state * flip_i
-        logpsi_fliped = lpsi(net_apply, net_params, fliped)
-        logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
-        print("-" * 50)
-        print(np.exp(logpsi_fliped - logpsi))
-        print(np.exp(logpsi_fliped - logpsi).mean())
-        print("=" * 50)
-        return np.exp(logpsi_fliped - logpsi)
-
-    logpsi = lpsi(net_apply, net_params, state)
-    logpsi = logpsi[0] + logpsi[1] * 1j
-    E = 0
-    for i in range(state.shape[1] - 1):
-        E -= state[:, i] * state[:, i + 1] - amplitude_diff(state, i)
-    E -= amplitude_diff(state, -1)
-    # print(E)
-    return E
-
-
 @partial(jit, static_argnums=(0, 3))
 def grad(net_apply, net_params, state, lpsi, energy):
     eloc = energy.conj()
@@ -177,22 +134,23 @@ def magnetization(state):
     return E
 
 
-def callback(params, i):
+def callback(params, i, ax):
     E, mag, end_time, start_time = params
     print("iteration {} took {:.4f} secs.".format(i + 1, end_time - start_time))
     plt.cla()
     ax.plot(E, label="Energy")
     ax.plot(mag, label="Magnetization")
+    plt.legend()
     plt.draw()
     plt.pause(1.0 / 60.0)
 
 
 # @partial(jit, static_argnums=(0,))
-def step(i, key, opt_state):
+def step(i, key, net_apply, opt_update, get_params, opt_state, data):
     params = get_params(opt_state)
+    # print(key, "one")
     key, s = sample(net_apply, params, key, data)
+    # print(key, "two")
     e = energy(net_apply, params, s, lpsi)
     g = grad(net_apply, params, s, lpsi, e)
-    E.append(e.real.mean())
-    mag.append(magnetization(s).mean())
-    return opt_update(i, g, opt_state)
+    return opt_update(i, g, opt_state), key, e.real.mean(), magnetization(s).mean()
