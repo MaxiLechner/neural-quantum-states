@@ -13,4 +13,4 @@ test.py
 __pycache__/rework.cpython-37.pyc
 __pycache__/sampler.cpython-37.pyc
 todo.txt
-references/*
+references/
