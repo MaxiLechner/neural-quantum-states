@@ -1,7 +1,4 @@
 *.ipynb
-Nqs2
-nqs
-qmtk
 *.vscode/*
 #!.vscode/settings.json
 #!.vscode/tasks.json
@@ -16,3 +13,4 @@ test.py
 __pycache__/rework.cpython-37.pyc
 __pycache__/sampler.cpython-37.pyc
 todo.txt
+references/
