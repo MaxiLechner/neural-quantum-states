@@ -10,7 +10,7 @@ import pdb
 if __name__ == "__main__":
     batchSize = 100
     numSpins = 10
-    net_apply, net_params, key, data = initialize_ising1d(batchSize, numSpins, net)
+    net_apply, net_params, data = initialize_ising1d(batchSize, numSpins, net)
 
     opt_init, opt_update, get_params = optimizers.adam(1e-02)
 
@@ -25,8 +25,8 @@ if __name__ == "__main__":
     opt_state = opt_init(net_params)
     for i in range(500):
         start_time = time()
-        opt_state, key, energy, magnetization = step(
-            i, key, net_apply, opt_update, get_params, opt_state, data
+        opt_state, energy, magnetization = step(
+            i, net_apply, opt_update, get_params, opt_state, data
         )
         E.append(energy)
         mag.append(magnetization)
@@ -39,10 +39,10 @@ if __name__ == "__main__":
     # numSpins = 10
     # net_apply, net_params, key, data = initialize_ising1d(batchSize, numSpins, net)
 
-    for i in range(2000):
+    for i in range(500):
         start_time = time()
-        opt_state, key, energy, magnetization = step(
-            i, key, net_apply, opt_update, get_params, opt_state, data
+        opt_state, energy, magnetization = step(
+            i, net_apply, opt_update, get_params, opt_state, data
         )
         E.append(energy)
         mag.append(magnetization)
