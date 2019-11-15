@@ -1,18 +1,9 @@
-# import numpy as onp
-# from jax import grad, jit
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from jax import lax
-
-# from jax.experimental import stax
-# from jax import random
-# from jax.experimental.stax import GeneralConv, Relu, relu, _elemwise_no_params
-# import jax
 import jax.numpy as np
-
-# import matplotlib as mpl
-# import functools
-
-# import pdb
-
 from jax.experimental.stax import randn, glorot
 import itertools
 
