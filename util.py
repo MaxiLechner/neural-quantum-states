@@ -19,12 +19,9 @@ def real_to_complex(arr):
 def expand_dimensions(w, n):
     """expand dims of the first array by adding np.newaxis on the
     right side to match the dimension of the second array"""
-    n = n.shape
-    length = len(n) - 1
-    shape = (n[0],) + (1,) * length
-    # while len(x.shape) != n:
-    #   x = np.expand_dims(x, expand_dim)
-    return w.reshape(shape)
+    while len(w.shape) != len(n.shape):
+        w = np.expand_dims(w, -1)
+    return w
 
 
 @jit
