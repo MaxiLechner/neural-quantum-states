@@ -1,56 +1,39 @@
 from ising1d import initialize_ising1d, step, callback
-from network import net
-
-from jax.experimental import optimizers
+from network import net, resnet
+import jax.numpy as np
 
 from time import time
 import matplotlib.pyplot as plt
-import pdb
 
 if __name__ == "__main__":
     batchSize = 100
     numSpins = 10
-    net_apply, net_params, data = initialize_ising1d(batchSize, numSpins, net)
+    lr = 1e-02
+    epochs = 300
+    net_apply, net_params, data, key, opt_init, opt_update, get_params = initialize_ising1d(
+        batchSize, numSpins, lr, resnet
+    )
 
-    opt_init, opt_update, get_params = optimizers.adam(1e-02)
-
+    gs_energy = 1 - 1 / (np.sin(np.pi / (2 * (2 * numSpins + 1))))
     E = []
     mag = []
-    ratio = []
-
+    E_var = []
+    Time = [time()]
     fig, ax = plt.subplots()
     plt.ion()
     plt.show(block=False)
 
     opt_state = opt_init(net_params)
-    for i in range(500):
-        start_time = time()
-        opt_state, energy, magnetization = step(
-            i, net_apply, opt_update, get_params, opt_state, data
+    for i in range(epochs):
+        opt_state, key, energy, magnetization, var = step(
+            i, net_apply, opt_update, get_params, opt_state, data, key
         )
         E.append(energy)
         mag.append(magnetization)
-        end_time = time()
-        if i % 25 == 0:
-            callback((E, mag, end_time, start_time), i, ax)
+        E_var.append(var.real)
+        Time.append(time())
+        callback((E, mag, Time, epochs, gs_energy), i, ax)
 
-    opt_init, opt_update, get_params = optimizers.adam(1e-03)
-    # batchSize = 250
-    # numSpins = 10
-    # net_apply, net_params, key, data = initialize_ising1d(batchSize, numSpins, net)
-
-    for i in range(500):
-        start_time = time()
-        opt_state, energy, magnetization = step(
-            i, net_apply, opt_update, get_params, opt_state, data
-        )
-        E.append(energy)
-        mag.append(magnetization)
-        end_time = time()
-        if i % 25 == 0:
-            callback((E, mag, end_time, start_time), i, ax)
-
-    # pdb.set_trace()
-
-    net_params = get_params(opt_state)
+    ax.plot(E_var, label="Variance")
+    plt.legend()
     plt.show(block=True)
