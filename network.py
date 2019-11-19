@@ -7,38 +7,38 @@ from jax.experimental.stax import Relu, FanOut, FanInSum, Identity
 from masked_conv_layer import MaskedConv1d
 
 
-def resnetBlock(M, FilterSize):
+def resnet_block_1d(width, FilterSize):
     Main = stax.serial(
-        MaskedConv1d(M, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME"),
         Relu,
-        MaskedConv1d(M, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME"),
         Relu,
-        MaskedConv1d(M, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME"),
     )
     Shortcut = Identity
     return stax.serial(FanOut(2), stax.parallel(Main, Shortcut), FanInSum, Relu)
 
 
-def resnet(M, FilterSize):
+def small_resnet_1d(width, FilterSize):
     Main = stax.serial(
-        MaskedConv1d(12, (FilterSize,), 0, padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), 0, padding="SAME"),
         Relu,
-        resnetBlock(12, (FilterSize,)),
+        resnet_block_1d(width, (FilterSize,)),
         # resnetBlock(12, (FilterSize,)),
-        MaskedConv1d(M, (1,), padding="SAME"),
+        MaskedConv1d(4, (1,), padding="SAME"),
         Relu,
     )
     return Main
 
 
-def net(M, FilterSize):
+def small_net_1d(width, FilterSize):
     Main = stax.serial(
-        MaskedConv1d(M, (FilterSize,), 0, padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), 0, padding="SAME"),
         Relu,
-        MaskedConv1d(M, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME"),
         Relu,
-        MaskedConv1d(M, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME"),
         Relu,
-        MaskedConv1d(M, (FilterSize,), padding="SAME"),
+        MaskedConv1d(4, (FilterSize,), padding="SAME"),
     )
     return Main
