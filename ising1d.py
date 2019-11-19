@@ -9,6 +9,7 @@ from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
+from network import resnet
 from wavefunction import lpsi
 from sampler import sample
 from util import make_complex, apply_elementwise
@@ -17,12 +18,12 @@ import matplotlib.pyplot as plt
 from functools import partial
 
 
-def initialize_ising1d(batchSize, numSpins, lr, network):
+def initialize_ising1d(batchSize, numSpins, lr):
     M = (
         2 * 2
     )  # number of possible values each input can take times 2 as lax.conv only works with real valued weights
     FilterSize = 3
-    model = network(M, FilterSize)
+    model = resnet(M, FilterSize)
     net_init, net_apply = model
     key = random.PRNGKey(0)
     key, subkey = random.split(key)

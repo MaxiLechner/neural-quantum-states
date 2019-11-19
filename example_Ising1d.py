@@ -1,17 +1,19 @@
 from ising1d import initialize_ising1d, step, callback
-from network import net, resnet
 import jax.numpy as np
 
 from time import time
 import matplotlib.pyplot as plt
 
-if __name__ == "__main__":
+from absl import app
+
+
+def main(unused_argv):
     batchSize = 100
     numSpins = 10
     lr = 1e-02
     epochs = 300
     net_apply, net_params, data, key, opt_init, opt_update, get_params = initialize_ising1d(
-        batchSize, numSpins, lr, resnet
+        batchSize, numSpins, lr
     )
 
     gs_energy = 1 - 1 / (np.sin(np.pi / (2 * (2 * numSpins + 1))))
@@ -37,3 +39,7 @@ if __name__ == "__main__":
     ax.plot(E_var, label="Variance")
     plt.legend()
     plt.show(block=True)
+
+
+if __name__ == "__main__":
+    app.run(main)
