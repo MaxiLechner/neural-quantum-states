@@ -39,13 +39,4 @@ def optim(sample, energy, grad, key):
         plt.show(block=True)
         return net_params, E, mag
 
-    def callback(ax, params, i):
-        E, mag, end_time, start_time = params
-        print("iteration {} took {:.4f} secs.".format(i + 1, end_time - start_time))
-        plt.cla()
-        ax.plot(E, label="Energy")
-        ax.plot(mag, label="Magnetization")
-        plt.draw()
-        plt.pause(1.0 / 60.0)
-
     return train
