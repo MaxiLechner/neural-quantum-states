@@ -9,7 +9,7 @@ from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
-from network import resnet
+from network import small_resnet_1d
 from wavefunction import lpsi
 from sampler import sample
 from util import make_complex, apply_elementwise
@@ -23,7 +23,7 @@ def initialize_ising1d(batchSize, numSpins, lr):
         2 * 2
     )  # number of possible values each input can take times 2 as lax.conv only works with real valued weights
     FilterSize = 3
-    model = resnet(M, FilterSize)
+    model = small_resnet_1d(M, FilterSize)
     net_init, net_apply = model
     key = random.PRNGKey(0)
     key, subkey = random.split(key)
