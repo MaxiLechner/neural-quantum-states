@@ -1,5 +1,5 @@
 from ising1d import step
-from network import small_resnet_1d
+from network import small_resnet_1d, small_net_1d
 
 import jax.numpy as np
 from jax import jit, random
@@ -74,13 +74,13 @@ def main(unused_argv):
                 )
             )
             old_time = new_time
-
+    print("exact energy: ", gs_energy)
     # ax.plot(E_var, label="Variance")
     # plt.legend()
     # plt.show(block=True)
 
     directory = Path(FLAGS.filedir)
-    subdir = "ising1d_size_{}_bsize_{}_resnet1d_lr_{:.2f}_epochs_{}_width_{}_fs_{}/".format(
+    subdir = "ising1d_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}/".format(
         FLAGS.num_spins,
         FLAGS.batch_size,
         FLAGS.learning_rate,
