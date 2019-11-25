@@ -36,3 +36,24 @@ def sample(net_apply, net_params, i, data, key):
 
     key, data = fori_loop(0, data.shape[1], body, (key, data))
     return key, data
+
+
+# @partial(jit, static_argnums=(0,))
+def check_sample(net_apply, net_params, i, data, key):
+    def body(i, loop_carry):
+        key, data, stuff = loop_carry
+        vi = net_apply(net_params, data)
+        probs = compute_probs(vi)
+        key, subkey = random.split(key)
+        sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
+        sample = sample.reshape(data.shape[0], 1)
+        data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
+        return key, data, probs
+
+    # pdb.set_trace()
+    stuff = np.ones((100, 10, 2))
+    # assert np.allclose(np.sum(probs, axis=2), 1)
+    key, data, probs = fori_loop(0, data.shape[1], body, (key, data, stuff))
+    # print(probs.sum(axis=2))
+    assert np.allclose(np.sum(probs, axis=2), 1)
+    return key, data
