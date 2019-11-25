@@ -1,6 +1,7 @@
 *.ipynb
 *.vscode/*
 *.npy
+*.pyc
 __pycache__/
 todo.txt
 references/
