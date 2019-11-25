@@ -61,7 +61,7 @@ def MaskedConv1d(
         bias_shape = [out_chan if c == "C" else 1 for c in out_spec]
         bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
         W, b = W_init(rng, kernel_shape), b_init(rng, bias_shape)
-        return output_shape, (W * filters, b)
+        return output_shape, (W, b)
 
     def apply_fun(params, inputs, **kwargs):
         W, b = params
