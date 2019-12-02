@@ -1,5 +1,5 @@
 from ising1d import step_heisenberg
-from network import small_net2_1d
+from network import small_net_1d
 
 import jax.numpy as np
 from jax import jit, random
@@ -34,18 +34,21 @@ def main(unused_argv):
             "ignore",
             message="Casting complex values to real discards the imaginary part",
         )
-    model = small_net2_1d(FLAGS.width, FLAGS.filter_size)
+    model = small_net_1d(FLAGS.width, FLAGS.filter_size)
     net_init, net_apply = model
     key = random.PRNGKey(FLAGS.seed)
     key, subkey = random.split(key)
     in_shape = (-1, FLAGS.num_spins, 1)
     _, net_params = net_init(subkey, in_shape)
     net_apply = jit(net_apply)
-    opt_init, opt_update, get_params = optimizers.adam(FLAGS.learning_rate)
+    opt_init, opt_update, get_params = optimizers.adam(
+        optimizers.polynomial_decay(FLAGS.learning_rate, 10, 0.0001, 3)
+    )
     data = np.zeros((FLAGS.batch_size, FLAGS.num_spins, 1), dtype=np.float32)
 
-    gs_energy = FLAGS.num_spins * (-np.log(2) + 1 / 4)
+    gs_energy = FLAGS.num_spins * (1 / 4 - np.log(2))
     E = []
+    E_imag = []
     mag = []
     E_var = []
     Time = [time()]
@@ -60,10 +63,11 @@ def main(unused_argv):
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, magnetization, var = step_heisenberg(
+        opt_state, key, energy, e_imag, magnetization, var = step_heisenberg(
             i, net_apply, opt_update, get_params, opt_state, data, key
         )
         E.append(energy)
+        E_imag.append(e_imag)
         mag.append(magnetization)
         E_var.append(var.real)
         Time.append(time())
@@ -87,27 +91,31 @@ def main(unused_argv):
 
     # plt.legend()
     # plt.show(block=True)
+    print("exact energy: ", gs_energy)
 
     directory = Path(FLAGS.filedir)
-    subdir = "heisenberg1d_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}/".format(
+    subdir = "heisenberg1d_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}_seed_{}/".format(
         FLAGS.num_spins,
         FLAGS.batch_size,
         FLAGS.learning_rate,
         FLAGS.epochs,
         FLAGS.width,
         FLAGS.filter_size,
+        FLAGS.seed,
     )
     directory = directory / subdir
 
     if directory.is_dir():
         np.save(directory / "exact_energy", gs_energy)
         np.save(directory / "energy", E)
+        np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
         np.save(directory / "energy_var", E_var)
     else:
         directory.mkdir(parents=True)
         np.save(directory / "exact_energy", gs_energy)
         np.save(directory / "energy", E)
+        np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
         np.save(directory / "energy_var", E_var)
 

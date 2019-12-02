@@ -1,5 +1,5 @@
 from ising1d import step
-from network import small_resnet_1d, small_net_1d
+from network import small_resnet_1d, small_net_1d, small_net2_1d
 
 import jax.numpy as np
 from jax import jit, random
@@ -9,6 +9,8 @@ from time import time
 from pathlib import Path
 import warnings
 from absl import app, flags
+
+import pdb
 
 
 FLAGS = flags.FLAGS
@@ -58,13 +60,15 @@ def main(unused_argv):
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, magnetization, var = step(
+        opt_state, key, energy, magnetization, var, sample = step(
             i, net_apply, opt_update, get_params, opt_state, data, key
         )
         E.append(energy)
         mag.append(magnetization)
         E_var.append(var.real)
         Time.append(time())
+        # print(i, energy)
+        # print("+" * 100)
         # callback((E, mag, Time, FLAGS.epochs, gs_energy), i, ax)
         if i % print_every == 0 and i > 0:
             new_time = time()
@@ -74,19 +78,23 @@ def main(unused_argv):
                 )
             )
             old_time = new_time
+        # print("+" * 100)
+        # if i >= 37:
+        #     pdb.set_trace()
     print("exact energy: ", gs_energy)
     # ax.plot(E_var, label="Variance")
     # plt.legend()
     # plt.show(block=True)
 
     directory = Path(FLAGS.filedir)
-    subdir = "ising1d_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}/".format(
+    subdir = "ising1d_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}_seed_{}/".format(
         FLAGS.num_spins,
         FLAGS.batch_size,
         FLAGS.learning_rate,
         FLAGS.epochs,
         FLAGS.width,
         FLAGS.filter_size,
+        FLAGS.seed,
     )
     directory = directory / subdir
 
