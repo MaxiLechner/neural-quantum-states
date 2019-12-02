@@ -12,7 +12,7 @@ from jax.experimental import optimizers
 from network import small_net_1d
 from wavefunction import log_amplitude_init
 from sampler import sample_init
-from util import make_complex, apply_elementwise
+from optim import grad_init, step_init
 
 import matplotlib.pyplot as plt
 
@@ -29,7 +29,7 @@ def initialize_heisenberg_1d(
     net_apply = jit(net_apply)
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
-    energy = energy_heisenberg_init(logpsi, J, pbc)
+    energy = energy_heisenberg_1d_init(logpsi, J, pbc)
     grad = grad_init(logpsi)
     opt_init, opt_update, get_params = optimizers.adam(
         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
@@ -51,7 +51,39 @@ def initialize_heisenberg_1d(
     return step, opt_state, key
 
 
-def energy_ising_init(log_amplitude, pbc):
+def initialize_ising_1d(width, filter_size, seed, num_spins, lr, batch_size, pbc):
+    model = small_net_1d(width, filter_size)
+    net_init, net_apply = model
+    key = random.PRNGKey(seed)
+    key, subkey = random.split(key)
+    in_shape = (-1, num_spins, 1)
+    _, net_params = net_init(subkey, in_shape)
+    net_apply = jit(net_apply)
+    sample = sample_init(net_apply)
+    logpsi = log_amplitude_init(net_apply)
+    energy = energy_ising_1d_init(logpsi, pbc)
+    grad = grad_init(logpsi)
+    opt_init, opt_update, get_params = optimizers.adam(
+        # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
+        lr
+    )
+    opt_state = opt_init(net_params)
+    data = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
+    step = step_init(
+        energy,
+        sample,
+        grad,
+        energy_var,
+        magnetization,
+        logpsi,
+        data,
+        opt_update,
+        get_params,
+    )
+    return step, opt_state, key
+
+
+def energy_ising_1d_init(log_amplitude, pbc):
     @jit
     def energy(net_params, state):
         @jit
@@ -87,7 +119,7 @@ def energy_ising_init(log_amplitude, pbc):
     return energy
 
 
-def energy_heisenberg_init(log_amplitude, J, pbc):
+def energy_heisenberg_1d_init(log_amplitude, J, pbc):
     @jit
     def energy(net_params, state):
         @jit
@@ -142,23 +174,6 @@ def energy_var(energy):
     return np.var(energy)
 
 
-def grad_init(log_amplitude):
-    @jit
-    def grad(net_params, state, energy):
-        """computes the gradient (jacobian as log_amplitude returns two real numbers instead of one complex number) of the
-        local energy log_amplitude by computing jac and multipliying it component wise with the local energy eloc"""
-        eloc = energy.conj()
-        eloc_mean = np.mean(eloc)
-        eloc = eloc - eloc_mean
-        jac = jax.jacrev(log_amplitude)
-        jac = jac(net_params, state)
-        jac = make_complex(jac)
-        jac = apply_elementwise(eloc, jac)
-        return jac
-
-    return grad
-
-
 @jit
 def magnetization(state):
     mag = np.sum(state, axis=1)
@@ -189,33 +204,3 @@ def callback(params, i, ax):
     # for i in range(len(ax)):
     #     ax[i].hist(pars[i * 2][0].flatten())
     #     # ax[i].set_title("layer", i * 2)
-
-
-def step_init(
-    energy_func,
-    sample_func,
-    grad_func,
-    energy_var,
-    magnetization,
-    log_amplitude,
-    data,
-    opt_update,
-    get_params,
-):
-    @jit
-    def step(i, opt_state, key):
-        params = get_params(opt_state)
-        key, sample = sample_func(params, data, key)
-        energy = energy_func(params, sample)
-        g = grad_func(params, sample, energy)
-        var = energy_var(energy)
-        return (
-            opt_update(i, g, opt_state),
-            key,
-            energy.real.mean(),
-            energy.imag.mean(),
-            magnetization(sample),
-            var,
-        )
-
-    return step
