@@ -42,7 +42,7 @@ def main(unused_argv):
     _, net_params = net_init(subkey, in_shape)
     net_apply = jit(net_apply)
     opt_init, opt_update, get_params = optimizers.adam(
-        optimizers.polynomial_decay(FLAGS.learning_rate, 10, 0.0001, 3)
+        optimizers.polynomial_decay(FLAGS.learning_rate, 10, 0.00001, 3)
     )
     data = np.zeros((FLAGS.batch_size, FLAGS.num_spins, 1), dtype=np.float32)
 
