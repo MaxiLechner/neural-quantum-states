@@ -118,7 +118,7 @@ def energy_heisenberg(net_apply, net_params, lpsi, state):
     @jit
     def body_fun(i, loop_carry):
         E, mask, state = loop_carry
-        E -= 0.5 * state[:, i] * state[:, i + 1] + 0.5 * mask[:, i] * amplitude_diff(
+        E -= 0.25 * state[:, i] * state[:, i + 1] + 0.25 * mask[:, i] * amplitude_diff(
             state, i, i + 1
         )
         return E, mask, state
@@ -134,8 +134,8 @@ def energy_heisenberg(net_apply, net_params, lpsi, state):
     start_val = start_val.astype("complex64")
 
     E, _, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, mask, state))
-    E -= 0.5 * state[:, -1] * state[:, 0]
-    E -= 0.5 * mask[:, -1] * amplitude_diff(state, -1, 0)
+    E -= 0.25 * state[:, -1] * state[:, 0]
+    E -= 0.25 * mask[:, -1] * amplitude_diff(state, -1, 0)
     return E
 
 
@@ -197,10 +197,7 @@ def step_heisenberg(i, net_apply, opt_update, get_params, opt_state, data, key):
     params = get_params(opt_state)
     key, sampl = sample(net_apply, params, data, key)
     # print(sampl.mean(), sampl.std())
-    # if i == 0:
-    # key, subkey = random.split(key)
-    # probs = 0.5 * np.ones((100, 10, 1))
-    # sampl = random.bernoulli(subkey, probs) * 2 - 1.0
+    # pdb.set_trace()
     energy = energy_heisenberg(net_apply, params, lpsi, sampl)
     # print(logpsi.mean(), logpsi.std())
     # print(mask.sum() / 200.0, mask.mean(), mask.std())
