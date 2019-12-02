@@ -1,4 +1,8 @@
-from ising1d import initialize_heisenberg_1d
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from hamiltonian import initialize_heisenberg_1d
 
 import jax.numpy as np
 
@@ -16,9 +20,14 @@ flags.DEFINE_float(
     1.0,
     "Coupling constant of the Heisenberg model. J<0: ferromagnetic model, J>0: antiferromagnetic model",
 )
-flags.DEFINE_float("lr", 1e-02, "Learning rate for training. Either float or schedule.")
-flags.DEFINE_integer("batch_size", 100, "Batch size")
-flags.DEFINE_integer("num_spins", 10, "Number of spins")
+flags.DEFINE_float(
+    "learning_rate",
+    1e-02,
+    "Learning rate for training. Either float or schedule.",
+    short_name="lr",
+)
+flags.DEFINE_integer("batch_size", 100, "Batch size", short_name="bs")
+flags.DEFINE_integer("num_spins", 10, "Number of spins", short_name="L")
 flags.DEFINE_integer("epochs", 200, "Number of epochs")
 flags.DEFINE_integer("seed", 0, "Seed for jax PRNG")
 flags.DEFINE_integer("width", 12, "Width of the model")
