@@ -26,6 +26,7 @@ flags.DEFINE_float(
     "Learning rate for training. Either float or schedule.",
     short_name="lr",
 )
+flags.DEFINE_integer("print_every", 10, "Print results every n'th iteration")
 flags.DEFINE_integer("batch_size", 100, "Batch size", short_name="bs")
 flags.DEFINE_integer("num_spins", 10, "Number of spins", short_name="L")
 flags.DEFINE_integer("epochs", 200, "Number of epochs")
@@ -69,7 +70,6 @@ def main(unused_argv):
     mag = []
     E_var = []
 
-    print_every = 10
     old_time = time()
     print("Step\tEnergy\tMagnetization\tVariance\ttime/step")
     print("---------------------------------------------------------")
@@ -80,7 +80,7 @@ def main(unused_argv):
         E_imag.append(e_imag)
         mag.append(magnetization)
         E_var.append(var.real)
-        if i % print_every == 0 and i > 0:
+        if i % FLAGS.print_every == 0 and i > 0:
             new_time = time()
             print(
                 "{}\t{:.2f}\t{:.2f}\t{:.3f}\t{:.2f}".format(
