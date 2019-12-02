@@ -1,8 +1,40 @@
-from jax import jit
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import jax.numpy as np
+from jax import jit, jacrev
+
+from util import make_complex, apply_elementwise
+
+
+def grad_init(log_amplitude):
+    @jit
+    def grad(net_params, state, energy):
+        """computes the gradient (jacobian as log_amplitude returns two real numbers instead of one complex number) of the
+        local energy log_amplitude by computing jac and multipliying it component wise with the local energy eloc"""
+        eloc = energy.conj()
+        eloc_mean = np.mean(eloc)
+        eloc = eloc - eloc_mean
+        jac = jacrev(log_amplitude)
+        jac = jac(net_params, state)
+        jac = make_complex(jac)
+        jac = apply_elementwise(eloc, jac)
+        return jac
+
+    return grad
 
 
 def step_init(
-    energy_func, sample_func, grad_func, log_amplitude, data, opt_update, get_params
+    energy_func,
+    sample_func,
+    grad_func,
+    energy_var,
+    magnetization,
+    log_amplitude,
+    data,
+    opt_update,
+    get_params,
 ):
     @jit
     def step(i, opt_state, key):
