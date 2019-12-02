@@ -32,14 +32,14 @@ def step_init(
     energy_var,
     magnetization,
     log_amplitude,
-    data,
+    init_batch,
     opt_update,
     get_params,
 ):
     @jit
     def step(i, opt_state, key):
         params = get_params(opt_state)
-        key, sample = sample_func(params, data, key)
+        key, sample = sample_func(params, init_batch, key)
         energy = energy_func(params, sample)
         g = grad_func(params, sample, energy)
         var = energy_var(energy)

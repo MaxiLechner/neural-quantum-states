@@ -36,7 +36,7 @@ def initialize_heisenberg_1d(
         lr
     )
     opt_state = opt_init(net_params)
-    data = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
+    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
     step = step_init(
         energy,
         sample,
@@ -44,7 +44,7 @@ def initialize_heisenberg_1d(
         energy_var,
         magnetization,
         logpsi,
-        data,
+        init_batch,
         opt_update,
         get_params,
     )
@@ -68,7 +68,7 @@ def initialize_ising_1d(width, filter_size, seed, num_spins, lr, batch_size, pbc
         lr
     )
     opt_state = opt_init(net_params)
-    data = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
+    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
     step = step_init(
         energy,
         sample,
@@ -76,7 +76,7 @@ def initialize_ising_1d(width, filter_size, seed, num_spins, lr, batch_size, pbc
         energy_var,
         magnetization,
         logpsi,
-        data,
+        init_batch,
         opt_update,
         get_params,
     )
