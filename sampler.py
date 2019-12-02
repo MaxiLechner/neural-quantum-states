@@ -22,20 +22,23 @@ def compute_probs(arr):
     return probs
 
 
-@partial(jit, static_argnums=(0,))
-def sample(net_apply, net_params, data, key):
-    def body(i, loop_carry):
-        key, data = loop_carry
-        vi = net_apply(net_params, data)
-        probs = compute_probs(vi)
-        key, subkey = random.split(key)
-        sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
-        sample = sample.reshape(data.shape[0], 1)
-        data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
+def sample_init(net_apply):
+    @jit
+    def sample(net_params, data, key):
+        def body(i, loop_carry):
+            key, data = loop_carry
+            vi = net_apply(net_params, data)
+            probs = compute_probs(vi)
+            key, subkey = random.split(key)
+            sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
+            sample = sample.reshape(data.shape[0], 1)
+            data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
+            return key, data
+
+        key, data = fori_loop(0, data.shape[1], body, (key, data))
         return key, data
 
-    key, data = fori_loop(0, data.shape[1], body, (key, data))
-    return key, data
+    return sample
 
 
 # # @partial(jit, static_argnums=(0,))
