@@ -41,10 +41,10 @@ def step_init(
         params = get_params(opt_state)
         key, sample = sample_func(params, init_batch, key)
         energy = energy_func(params, sample)
-        g = grad_func(params, sample, energy)
+        grad = grad_func(params, sample, energy)
         var = energy_var(energy)
         return (
-            opt_update(i, g, opt_state),
+            opt_update(i, grad, opt_state),
             key,
             energy.real.mean(),
             energy.imag.mean(),
