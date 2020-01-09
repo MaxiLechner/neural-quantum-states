@@ -5,6 +5,7 @@ from __future__ import print_function
 import jax.numpy as np
 from jax.lib import pytree
 from jax import jit
+from jax.tree_util import tree_map, tree_multimap
 
 
 @jit
@@ -39,15 +40,8 @@ def apply_elementwise(eloc, jac):
         out.append(i)
     return treedef.unflatten(out)
 
-
 @jit
 def make_complex(state):
     """turns the real valued state into complex form, function modeled after tree_util functions like tree_map"""
-    a, b = state
-    assert len(a) == len(b)
-    leaves, treedef = pytree.flatten(a)
-    leaves2, _ = pytree.flatten(b)
-    out = []
-    for i in range(len(leaves)):
-        out.append(leaves[i] + leaves2[i] * 1j)
-    return treedef.unflatten(out)
+    tree_left, tree_right = state
+    return tree_multimap(lambda x, y: x + y*1j, tree_left, tree_right)
