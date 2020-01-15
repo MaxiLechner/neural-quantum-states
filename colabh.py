@@ -15,7 +15,7 @@ from time import time
 from pathlib import Path
 import warnings
 from absl import app, flags
-
+import pdb
 
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("Complex_warning", True, "Surpress Complex warning")
@@ -95,6 +95,7 @@ def main(unused_argv):
     for i in range(FLAGS.epochs):
         if i == 0:
             print(1)
+        pdb.set_trace()
         opt_state, key, energy, e_imag, magnetization, var = step(i, opt_state, key)
         if i == 0:
             print(2)
