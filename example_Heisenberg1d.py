@@ -60,7 +60,7 @@ def main(unused_argv):
     if FLAGS.pbc:
         if FLAGS.J == 1:
             gs_energy = FLAGS.num_spins * (1 / 4 - np.log(2))
-        if FLAGS.J < 0:
+        elif FLAGS.J < 0:
             gs_energy = FLAGS.J * FLAGS.num_spins / 4
         else:
             gs_energy = np.nan
