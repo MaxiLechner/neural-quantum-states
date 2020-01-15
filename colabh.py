@@ -6,25 +6,10 @@ from __future__ import print_function
 import requests
 import os
 
-if "TPU_DRIVER_MODE" not in globals():
-    url = (
-        "http://"
-        + os.environ["COLAB_TPU_ADDR"].split(":")[0]
-        + ":8475/requestversion/tpu_driver0.1-dev20191206"
-    )
-    resp = requests.post(url)
-    TPU_DRIVER_MODE = 1
-
-# The following is required to use TPU Driver as JAX's backend.
-from jax.config import config
-
-config.FLAGS.jax_xla_backend = "tpu_driver"
-config.FLAGS.jax_backend_target = "grpc://" + os.environ["COLAB_TPU_ADDR"]
-print(config.FLAGS.jax_backend_target)
-
 from hamiltonian import initialize_heisenberg_1d
 
 import jax.numpy as np
+from jax.config import config
 
 from time import time
 from pathlib import Path
@@ -66,6 +51,19 @@ def main(unused_argv):
             message="Casting complex values to real discards the imaginary part",
         )
 
+    if "TPU_DRIVER_MODE" not in globals():
+        url = (
+            "http://"
+            + os.environ["COLAB_TPU_ADDR"].split(":")[0]
+            + ":8475/requestversion/tpu_driver0.1-dev20191206"
+        )
+    resp = requests.post(url)
+    TPU_DRIVER_MODE = 1
+
+    config.FLAGS.jax_xla_backend = "tpu_driver"
+    config.FLAGS.jax_backend_target = "grpc://" + os.environ["COLAB_TPU_ADDR"]
+    print(config.FLAGS.jax_backend_target)
+
     step, opt_state, key = initialize_heisenberg_1d(
         FLAGS.width,
         FLAGS.filter_size,
@@ -95,7 +93,11 @@ def main(unused_argv):
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
+        if i == 0:
+            print(1)
         opt_state, key, energy, e_imag, magnetization, var = step(i, opt_state, key)
+        if i == 0:
+            print(2)
         E.append(energy)
         E_imag.append(e_imag)
         mag.append(magnetization)
