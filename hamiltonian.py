@@ -36,7 +36,7 @@ def initialize_heisenberg_1d(
         lr
     )
     opt_state = opt_init(net_params)
-    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float64)
+    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
     step = step_init(
         energy,
         sample,
@@ -159,7 +159,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
         loop_end = state.shape[1] - 1
         start_val = np.zeros(state.shape[0])
         start_val = start_val[..., None]
-        start_val = start_val.astype("complex128")
+        start_val = start_val.astype("complex64")
 
         E, _, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, mask, state))
         # Can't use if statements in jitted code, need to use lax primitive instead.

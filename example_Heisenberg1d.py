@@ -2,19 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from jax.config import config
-
 from hamiltonian import initialize_heisenberg_1d
 
 import jax.numpy as np
-from jax import random
 
 from time import time
 from pathlib import Path
 import warnings
 from absl import app, flags
-
-# config.update("jax_enable_x64", True)
 
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("Complex_warning", True, "Surpress Complex warning")
@@ -68,9 +63,6 @@ def main(unused_argv):
             gs_energy = FLAGS.J * FLAGS.num_spins / 4
         else:
             gs_energy = np.nan
-
-    x = random.uniform(random.PRNGKey(0), (1000,), dtype=np.float64)
-    print(x.dtype)  # --> dtype('float64')
 
     E = []
     E_imag = []
