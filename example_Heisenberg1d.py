@@ -14,7 +14,7 @@ from pathlib import Path
 import warnings
 from absl import app, flags
 
-config.update("jax_enable_x64", True)
+# config.update("jax_enable_x64", True)
 
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("Complex_warning", True, "Surpress Complex warning")
