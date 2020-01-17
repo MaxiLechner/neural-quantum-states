@@ -27,6 +27,8 @@ def small_resnet_1d(width, FilterSize):
         Relu,
         resnet_block_1d(width, (FilterSize,)),
         Relu,
+        resnet_block_1d(width, (FilterSize,)),
+        Relu,
         MaskedConv1d(4, (FilterSize,), padding="SAME"),
     )
     return Main
