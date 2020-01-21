@@ -96,12 +96,19 @@ def energy_ising_1d_init(log_amplitude, pbc):
             fliped = state * flip_i
             logpsi_fliped = log_amplitude(net_params, fliped)
             logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
-            return np.exp(logpsi_fliped - logpsi)
+            return np.exp(logpsi_fliped - logpsi)  # , logpsi_fliped - logpsi
+            # return logpsi_fliped - logpsi
 
         @jit
-        def body_fun(i, loop_carry):
+        def body_fun1(i, loop_carry):
             E, s = loop_carry
-            E -= s[:, i] * s[:, i + 1] - amplitude_diff(s, i)
+            E -= s[:, i] * s[:, i + 1]
+            return E, s
+
+        @jit
+        def body_fun2(i, loop_carry):
+            E, s = loop_carry
+            E += amplitude_diff(s, i)
             return E, s
 
         logpsi = log_amplitude(net_params, state)
@@ -112,9 +119,14 @@ def energy_ising_1d_init(log_amplitude, pbc):
         start_val = np.zeros(state.shape[0])
         start_val = start_val[..., None]
         start_val = start_val.astype("complex64")
-        E, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, state))
-        E -= amplitude_diff(state, -1)
-        return E
+
+        E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
+        diff, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, state))
+        diff += amplitude_diff(state, -1)
+        # diff2 = np.exp(diff)
+        # E = E0 + diff2
+        E = E0 - diff
+        return E, E0, diff
 
     return energy
 

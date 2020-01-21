@@ -40,7 +40,7 @@ def step_init(
     def step(i, opt_state, key):
         params = get_params(opt_state)
         key, sample = sample_func(params, init_batch, key)
-        energy = energy_func(params, sample)
+        energy, E0, diff = energy_func(params, sample)
         grad = grad_func(params, sample, energy)
         var = energy_var(energy)
         return (
@@ -50,6 +50,9 @@ def step_init(
             energy.imag.mean(),
             magnetization(sample),
             var,
+            E0,
+            diff,
+            sample,
         )
 
     return step

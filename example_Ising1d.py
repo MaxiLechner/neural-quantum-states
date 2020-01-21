@@ -60,17 +60,25 @@ def main(unused_argv):
     E_imag = []
     mag = []
     E_var = []
+    Diff = []
+    E0 = []
+    sample = []
 
     old_time = time()
     print("Step\tEnergy\tMagnetization\tVariance\ttime/step")
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, e_imag, magnetization, var = step(i, opt_state, key)
+        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s = step(
+            i, opt_state, key
+        )
+        E0.append(e0)
+        Diff.append(diff)
         E.append(energy)
         E_imag.append(e_imag)
         mag.append(magnetization)
         E_var.append(var.real)
+        sample.append(s)
         if i % FLAGS.print_every == 0 and i > 0:
             new_time = time()
             print(
@@ -94,6 +102,9 @@ def main(unused_argv):
     directory = directory / subdir
 
     if directory.is_dir():
+        np.save(directory / "diff", Diff)
+        np.save(directory / "e0", E0)
+        np.save(directory / "sample", sample)
         np.save(directory / "energy", E)
         np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
@@ -102,6 +113,9 @@ def main(unused_argv):
             np.save(directory / "exact_energy", gs_energy)
     else:
         directory.mkdir(parents=True)
+        np.save(directory / "diff", Diff)
+        np.save(directory / "e0", E0)
+        np.save(directory / "sample", sample)
         np.save(directory / "energy", E)
         np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
