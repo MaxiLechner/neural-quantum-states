@@ -71,15 +71,17 @@ def main(unused_argv):
     Diff = []
     E0 = []
     sample = []
+    lpsi = []
 
     old_time = time()
     print("Step\tEnergy\tMagnetization\tVariance\ttime/step")
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s = step(
+        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s, logpsi = step(
             i, opt_state, key
         )
+        lpsi.append(logpsi)
         E0.append(e0)
         Diff.append(diff)
         sample.append(s)
@@ -111,6 +113,7 @@ def main(unused_argv):
     directory = directory / subdir
 
     if directory.is_dir():
+        np.save(directory / "logpsi", lpsi)
         np.save(directory / "diff", Diff)
         np.save(directory / "e0", E0)
         np.save(directory / "sample", sample)
@@ -122,6 +125,7 @@ def main(unused_argv):
             np.save(directory / "exact_energy", gs_energy)
     else:
         directory.mkdir(parents=True)
+        np.save(directory / "logpsi", lpsi)
         np.save(directory / "diff", Diff)
         np.save(directory / "e0", E0)
         np.save(directory / "sample", sample)

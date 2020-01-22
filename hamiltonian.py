@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 def initialize_heisenberg_1d(
     width, filter_size, seed, num_spins, lr, J, batch_size, pbc
 ):
-    model = small_resnet_1d(width, filter_size)
+    model = small_net_1d(width, filter_size)
     net_init, net_apply = model
     key = random.PRNGKey(seed)
     key, subkey = random.split(key)
@@ -126,7 +126,7 @@ def energy_ising_1d_init(log_amplitude, pbc):
         # diff2 = np.exp(diff)
         # E = E0 + diff2
         E = E0 - diff
-        return E, E0, diff
+        return E, E0, diff, logpsi
 
     return energy
 
@@ -186,7 +186,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
 
         E = E0 + E1
 
-        return E, E0, E1
+        return E, E0, E1, logpsi
 
     return energy
 
