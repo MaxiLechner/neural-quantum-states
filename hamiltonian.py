@@ -148,17 +148,22 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
             return np.exp(logpsi_fliped - logpsi)
 
         @jit
-        def body_fun(i, loop_carry):
+        def body_fun1(i, loop_carry):
+            E, s = loop_carry
+            E += J * 0.25 * (s[:, i] * s[:, i + 1])
+            return E, s
+
+        @jit
+        def body_fun2(i, loop_carry):
             E, m, s = loop_carry
-            E += (
-                J
-                * 0.25
-                * (s[:, i] * s[:, i + 1] + m[:, i] * amplitude_diff(s, i, i + 1))
-            )
+            E += J * 0.25 * (m[:, i] * amplitude_diff(s, i, i + 1))
             return E, m, s
 
-        def pbc_contrib(E):
+        def pbc_contrib1(E):
             E += J * 0.25 * state[:, -1] * state[:, 0]
+            return E
+
+        def pbc_contrib2(E):
             E += J * 0.25 * mask[:, -1] * amplitude_diff(state, -1, 0)
             return E
 
@@ -173,10 +178,15 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
         start_val = start_val[..., None]
         start_val = start_val.astype("complex64")
 
-        E, _, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, mask, state))
+        E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
+        E1, _, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, mask, state))
         # Can't use if statements in jitted code, need to use lax primitive instead.
-        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda E: np.add(E, 0))
-        return E
+        E0 = jax.lax.cond(pbc, E0, pbc_contrib1, E0, lambda E: np.add(E0, 0))
+        E1 = jax.lax.cond(pbc, E1, pbc_contrib2, E1, lambda E: np.add(E1, 0))
+
+        E = E0 + E1
+
+        return E, E0, E1
 
     return energy
 
