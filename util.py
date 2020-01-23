@@ -12,7 +12,8 @@ from jax.tree_util import tree_multimap
 def real_to_complex(arr):
     _, _, s3 = arr.shape
     assert s3 == 4
-    carr = arr[:, :, [0, 2]] * np.exp(arr[:, :, [1, 3]] * 1j)
+    # carr = arr[:, :, [0, 2]] * np.exp(arr[:, :, [1, 3]] * 1j)
+    carr = arr[:, :, [0, 2]] + arr[:, :, [1, 3]] * 1j
     return carr
 
 
