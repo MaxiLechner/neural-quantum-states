@@ -51,6 +51,40 @@ def initialize_heisenberg_1d(
     return step, opt_state, key
 
 
+def initialize_sutherland_1d(
+    width, filter_size, seed, num_spins, lr, batch_size, pbc
+):
+    model = small_net_1d(width, filter_size)
+    net_init, net_apply = model
+    key = random.PRNGKey(seed)
+    key, subkey = random.split(key)
+    in_shape = (-1, num_spins, 1)
+    _, net_params = net_init(subkey, in_shape)
+    net_apply = jit(net_apply)
+    sample = sample_init(net_apply)
+    logpsi = log_amplitude_init(net_apply)
+    energy = energy_sutherland_1d_init(logpsi, pbc)
+    grad = grad_init(logpsi)
+    opt_init, opt_update, get_params = optimizers.adam(
+        # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
+        lr
+    )
+    opt_state = opt_init(net_params)
+    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
+    step = step_init(
+        energy,
+        sample,
+        grad,
+        energy_var,
+        magnetization,
+        logpsi,
+        init_batch,
+        opt_update,
+        get_params,
+    )
+    return step, opt_state, key
+
+
 def initialize_ising_1d(width, filter_size, seed, num_spins, lr, batch_size, pbc):
     model = small_net_1d(width, filter_size)
     net_init, net_apply = model
@@ -111,6 +145,12 @@ def energy_ising_1d_init(log_amplitude, pbc):
             E += amplitude_diff(s, i)
             return E, s
 
+        @jit
+        def body_fun(i, loop_carry):
+            E, s = loop_carry
+            E -= amplitude_diff(s, i) + s[:, i] * s[:, i + 1]
+            return E, s
+
         logpsi = log_amplitude(net_params, state)
         logpsi = logpsi[0] + logpsi[1] * 1j
 
@@ -120,12 +160,18 @@ def energy_ising_1d_init(log_amplitude, pbc):
         start_val = start_val[..., None]
         start_val = start_val.astype("complex64")
 
-        E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
-        diff, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, state))
-        diff += amplitude_diff(state, -1)
+        # E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
+        # diff, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, state))
+        # diff += amplitude_diff(state, -1)
+
+        E, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, state))
+        E -= amplitude_diff(state, -1)
+        E0 = E
+        diff = E
+
         # diff2 = np.exp(diff)
         # E = E0 + diff2
-        E = E0 - diff
+        # E = E0 - diff
         return E, E0, diff, logpsi
 
     return energy
@@ -186,6 +232,53 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
 
         E = E0 + E1
 
+        return E, E0, E1, logpsi
+
+    return energy
+
+
+def energy_sutherland_1d_init(log_amplitude, pbc):
+    @jit
+    def energy(net_params, state):
+        @jit
+        def amplitude_diff(state, i, j, idx):
+            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
+            have their sign fliped. As logpsi returns the real and the imaginary part
+            seperately, we therefor need to recombine them into a complex valued array"""
+            state = jax.ops.index_update(state, jax.ops.index[:, i], idx[:, 0])
+            state = jax.ops.index_update(state, jax.ops.index[:, j], idx[:, 1])
+            logpsi_swaped = log_amplitude(net_params, state)
+            logpsi_swaped = logpsi_swaped[0] + logpsi_swaped[1] * 1j
+            return np.exp(logpsi_swaped - logpsi)
+
+        @jit
+        def body_fun(i, loop_carry):
+            E, s = loop_carry
+            idx = s[:, [i + 1, i]]
+            E += amplitude_diff(state, i, i + 1, idx)
+            return E, s
+
+        def pbc_contrib(E):
+            idx = state[:, [0, -1]]
+            E += amplitude_diff(state, -1, 0, idx)
+            return E
+
+        logpsi = log_amplitude(net_params, state)
+        logpsi = logpsi[0] + logpsi[1] * 1j
+
+        loop_start = 0
+        loop_end = state.shape[1] - 1
+        start_val = np.zeros(state.shape[0])
+        start_val = start_val[..., None]
+        start_val = start_val.astype("complex64")
+
+        E, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, state))
+
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda E: np.add(E, 0))
+
+        E0 = E
+        E1 = E
         return E, E0, E1, logpsi
 
     return energy
