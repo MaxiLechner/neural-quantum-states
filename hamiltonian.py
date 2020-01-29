@@ -62,111 +62,6 @@ def initialize_model_1d(
     return step, opt_state, key
 
 
-# def initialize_heisenberg_1d(
-#     width, filter_size, seed, num_spins, lr, J, batch_size, pbc, network
-# ):
-#     net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
-
-#     try:
-#         net = net_dispatch[network]
-#     except KeyError:
-#         raise ValueError("invalid input")
-
-#     model = net(width, filter_size)
-#     net_init, net_apply = model
-#     key = random.PRNGKey(seed)
-#     key, subkey = random.split(key)
-#     in_shape = (-1, num_spins, 1)
-#     _, net_params = net_init(subkey, in_shape)
-#     net_apply = jit(net_apply)
-#     sample = sample_init(net_apply)
-#     logpsi = log_amplitude_init(net_apply)
-#     energy = energy_heisenberg_1d_init(logpsi, J, pbc)
-#     grad = grad_init(logpsi)
-#     opt_init, opt_update, get_params = optimizers.adam(
-#         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
-#         lr
-#     )
-#     opt_state = opt_init(net_params)
-#     init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
-#     step = step_init(
-#         energy,
-#         sample,
-#         grad,
-#         energy_var,
-#         magnetization,
-#         logpsi,
-#         init_batch,
-#         opt_update,
-#         get_params,
-#     )
-#     return step, opt_state, key
-
-
-# def initialize_sutherland_1d(width, filter_size, seed, num_spins, lr, J, batch_size, pbc):
-#     model = small_net_1d(width, filter_size)
-#     net_init, net_apply = model
-#     key = random.PRNGKey(seed)
-#     key, subkey = random.split(key)
-#     in_shape = (-1, num_spins, 1)
-#     _, net_params = net_init(subkey, in_shape)
-#     net_apply = jit(net_apply)
-#     sample = sample_init(net_apply)
-#     logpsi = log_amplitude_init(net_apply)
-#     energy = energy_sutherland_1d_init(logpsi, J, pbc)
-#     grad = grad_init(logpsi)
-#     opt_init, opt_update, get_params = optimizers.adam(
-#         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
-#         lr
-#     )
-#     opt_state = opt_init(net_params)
-#     init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
-#     step = step_init(
-#         energy,
-#         sample,
-#         grad,
-#         energy_var,
-#         magnetization,
-#         logpsi,
-#         init_batch,
-#         opt_update,
-#         get_params,
-#     )
-#     return step, opt_state, key
-
-
-# def initialize_ising_1d(width, filter_size, seed, num_spins, lr, J, batch_size, pbc):
-#     model = small_net_1d(width, filter_size)
-#     net_init, net_apply = model
-#     key = random.PRNGKey(seed)
-#     key, subkey = random.split(key)
-#     in_shape = (-1, num_spins, 1)
-#     _, net_params = net_init(subkey, in_shape)
-#     net_apply = jit(net_apply)
-#     sample = sample_init(net_apply)
-#     logpsi = log_amplitude_init(net_apply)
-#     energy = energy_ising_1d_init(logpsi, J, pbc)
-#     grad = grad_init(logpsi)
-#     opt_init, opt_update, get_params = optimizers.adam(
-#         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
-#         lr
-#     )
-#     opt_state = opt_init(net_params)
-#     init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
-#     step = step_init(
-#         energy,
-#         sample,
-#         grad,
-#         energy_var,
-#         magnetization,
-#         logpsi,
-#         init_batch,
-#         opt_update,
-#         get_params,
-#     )
-#     return step, opt_state, key
-
-
 def energy_ising_1d_init(log_amplitude, J, pbc):
     @jit
     def energy(net_params, state):
@@ -222,7 +117,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc):
         # diff2 = np.exp(diff)
         # E = E0 + diff2
         # E = E0 - diff
-        return E, E0, diff, logpsi
+        return E, E0, diff, logpsi, E, E
 
     return energy
 
