@@ -25,8 +25,15 @@ flags.DEFINE_integer("batch_size", 100, "Batch size", short_name="bs")
 flags.DEFINE_integer("num_spins", 10, "Number of spins", short_name="L")
 flags.DEFINE_integer("epochs", 200, "Number of epochs")
 flags.DEFINE_integer("seed", 0, "Seed for jax PRNG")
-flags.DEFINE_integer("width", 12, "Width of the model")
+flags.DEFINE_integer("width", 12, "Width of the network")
 flags.DEFINE_integer("filter_size", 3, "Size of the convolution filters")
+flags.DEFINE_enum(
+    "network",
+    "small_net_1d",
+    ["small_net_1d", "small_resnet_1d"],
+    "NN from network.py",
+    short_name="m",
+)
 flags.DEFINE_string(
     "filedir", "notebooks/results/", "Directory where data is saved.", short_name="f"
 )
@@ -48,6 +55,7 @@ def main(unused_argv):
         FLAGS.lr,
         FLAGS.batch_size,
         FLAGS.pbc,
+        FLAGS.network,
     )
 
     gs_energy = -3.9
@@ -60,15 +68,19 @@ def main(unused_argv):
     E0 = []
     sample = []
     lpsi = []
+    lprob_i = []
+    msk = []
 
     old_time = time()
     print("Step\tEnergy\tMagnetization\tVariance\ttime/step")
     print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s, logpsi = step(
+        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s, logpsi, lprob, mask = step(
             i, opt_state, key
         )
+        lprob_i.append(lprob)
+        msk.append(mask)
         lpsi.append(logpsi)
         E0.append(e0)
         Diff.append(diff)
@@ -87,10 +99,11 @@ def main(unused_argv):
             old_time = new_time
 
     directory = Path(FLAGS.filedir)
-    subdir = "sutherland1d_pbc_{}_size_{}_bsize_{}_resnet1d_lr_{}_epochs_{}_width_{}_fs_{}_seed_{}/".format(
+    subdir = "sutherland1d_pbc_{}_size_{}_bsize_{}_{}_lr_{}_epochs_{}_width_{}_fs_{}_seed_{}/".format(
         FLAGS.pbc,
         FLAGS.num_spins,
         FLAGS.batch_size,
+        FLAGS.network,
         FLAGS.lr,
         FLAGS.epochs,
         FLAGS.width,
@@ -100,6 +113,8 @@ def main(unused_argv):
     directory = directory / subdir
 
     if directory.is_dir():
+        np.save(directory / "lprob_i", lprob_i)
+        np.save(directory / "mask", msk)
         np.save(directory / "logpsi", lpsi)
         np.save(directory / "diff", Diff)
         np.save(directory / "e0", E0)
@@ -112,6 +127,8 @@ def main(unused_argv):
             np.save(directory / "exact_energy", gs_energy)
     else:
         directory.mkdir(parents=True)
+        np.save(directory / "lprob_i", lprob_i)
+        np.save(directory / "mask", msk)
         np.save(directory / "logpsi", lpsi)
         np.save(directory / "diff", Diff)
         np.save(directory / "e0", E0)
