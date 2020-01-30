@@ -5,7 +5,7 @@ from __future__ import print_function
 import jax.numpy as np
 from jax import jit, jacrev
 
-from util import make_complex, apply_elementwise
+from .util import make_complex, apply_elementwise
 
 
 def grad_init(log_amplitude):

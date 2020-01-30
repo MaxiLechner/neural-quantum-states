@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import jax.numpy as np
 from jax import jit
-from util import real_to_complex
+from .util import real_to_complex
 
 
 def log_amplitude_init(net_apply):

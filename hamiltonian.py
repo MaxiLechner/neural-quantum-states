@@ -9,10 +9,10 @@ from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
-from network import small_net_1d, small_resnet_1d
-from wavefunction import log_amplitude_init
-from sampler import sample_init
-from optim import grad_init, step_init
+from .network import small_net_1d, small_resnet_1d
+from .wavefunction import log_amplitude_init
+from .sampler import sample_init
+from .optim import grad_init, step_init
 
 import matplotlib.pyplot as plt
 

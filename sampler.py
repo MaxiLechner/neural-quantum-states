@@ -7,7 +7,7 @@ import jax.numpy as np
 from jax import jit, random
 from jax.lax import fori_loop
 
-from util import real_to_complex
+from .util import real_to_complex
 
 
 @jit
