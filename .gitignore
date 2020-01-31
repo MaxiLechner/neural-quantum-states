@@ -2,6 +2,7 @@
 *.vscode/*
 *.npy
 *.pyc
+*.egg-info
 .DS_Store
 __pycache__/
 todo.txt
