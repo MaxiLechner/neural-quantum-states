@@ -7,5 +7,5 @@ setuptools.setup(
     install_requires=INSTALL_REQUIRES,
     packages=setuptools.find_packages(),
     description="Neural Quantum States implemented in JAX.",
-    python_requires=">=3.7",
+    python_requires=">=3.6.9",
 )
