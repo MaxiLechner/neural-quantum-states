@@ -6,6 +6,8 @@ import jax.numpy as np
 from jax import jit, vmap
 from .util import real_to_complex
 
+from functools import partial
+
 
 def log_amplitude_init(net_apply):
     @jit
@@ -14,18 +16,11 @@ def log_amplitude_init(net_apply):
         the amplitude for both up and down states we need to pick the
         right amplitude by indexing according to the samples"""
 
-        def _index(x, y):
-            """index the array x with the array y, by indexing x[i] with y[i]
-            and vmapping over the index i"""
-
-            @vmap
-            def index(i):
-                xi = x[i]  # shape: (N,2)
-                yi = y[i]  # shape: (N)
-                arange = np.arange(xi.shape[0])
-                return xi[arange, yi]
-
-            return index
+        def index(x, y, i):
+            xi = x[i]  # shape: (N,2)
+            yi = y[i]  # shape: (N)
+            arange = np.arange(xi.shape[0])
+            return xi[arange, yi]
 
         arr = net_apply(net_params, data)
         arr = real_to_complex(arr)
@@ -36,7 +31,7 @@ def log_amplitude_init(net_apply):
         B, _, _ = data.shape
         idx = (data + 1) / 2
         idx = idx.astype(np.int32).squeeze()
-        index = _index(arr, idx)
+        index = vmap(partial(index, arr, idx))
         vi = index(np.arange(B))[..., np.newaxis]
         logpsi = vi - 0.5 * np.log(nc)
         logpsi = np.sum(logpsi, axis=1)
