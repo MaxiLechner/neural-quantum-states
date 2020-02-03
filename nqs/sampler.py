@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import jax
 import jax.numpy as np
 from jax import jit, random
