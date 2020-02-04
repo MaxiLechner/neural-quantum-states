@@ -103,8 +103,6 @@ def main(unused_argv):
     msk = []
 
     old_time = time()
-    print("Step\tEnergy\tMagnetization\tVariance\ttime/step")
-    print("---------------------------------------------------------")
 
     for i in range(FLAGS.epochs):
         opt_state, key, energy, e_imag, magnetization, var, e0, diff, s, logpsi, lprob, mask = step(
@@ -120,7 +118,20 @@ def main(unused_argv):
         E_imag.append(e_imag)
         mag.append(magnetization)
         E_var.append(var.real)
-        if i % FLAGS.print_every == 0 and i > 0:
+
+        if i == 0:
+            new_time = time()
+            print(
+                "{}\t{}\t{}\t{}\t{}".format("Step", "Energy", "Mag", "Var", "Time/Step")
+            )
+            print("-----------------------------------------")
+            print(
+                "{}\t{:.2f}\t{:.2f}\t{:.3f}\t{:.2f}".format(
+                    i, energy, magnetization, var.real, new_time - old_time
+                )
+            )
+            old_time = new_time
+        if i % FLAGS.print_every == 0 and i > 0 or i == FLAGS.epochs - 1:
             new_time = time()
             print(
                 "{}\t{:.2f}\t{:.2f}\t{:.3f}\t{:.2f}".format(
