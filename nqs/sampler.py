@@ -25,7 +25,7 @@ def sample_init(net_apply):
             probs = compute_probs(vi)
             key, subkey = random.split(key)
             sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
-            sample = sample.reshape(data.shape[0], 1)
+            sample = sample[..., np.newaxis]
             data = jax.ops.index_update(data, jax.ops.index[:, i], sample)
             return key, data
 
