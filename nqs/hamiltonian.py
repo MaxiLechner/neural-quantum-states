@@ -14,8 +14,25 @@ import matplotlib.pyplot as plt
 
 
 def initialize_model_1d(
-    hamiltonian, width, filter_size, seed, num_spins, lr, J, batch_size, pbc, network
+    hamiltonian,
+    width,
+    filter_size,
+    seed,
+    num_spins,
+    lr,
+    J,
+    batch_size,
+    pbc,
+    network,
+    f32=True,
 ):
+    if f32:
+        f_dtype = np.float32
+        c_dtype = np.complex64
+    else:
+        f_dtype = np.float64
+        c_dtype = np.complex128
+
     net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
     net = net_dispatch[network]
     energy_dispatch = {
@@ -35,7 +52,7 @@ def initialize_model_1d(
 
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
-    energy = energy_init(logpsi, J, pbc)
+    energy = energy_init(logpsi, J, pbc, c_dtype)
 
     grad = grad_init(logpsi)
     opt_init, opt_update, get_params = optimizers.adam(
@@ -43,7 +60,7 @@ def initialize_model_1d(
         lr
     )
     opt_state = opt_init(net_params)
-    init_batch = np.zeros((batch_size, num_spins, 1), dtype=np.float32)
+    init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
     step = step_init(
         energy,
         sample,
@@ -118,7 +135,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc):
     return energy
 
 
-def energy_heisenberg_1d_init(log_amplitude, J, pbc):
+def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
     @jit
     def energy(net_params, state):
         @jit
@@ -161,13 +178,13 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc):
         logpsi = log_amplitude(net_params, state)
         logpsi = logpsi[0] + logpsi[1] * 1j
 
-        logprobarr = np.zeros(state.shape, dtype=np.complex64)
+        logprobarr = np.zeros(state.shape, dtype=c_dtype)
 
         loop_start = 0
         loop_end = state.shape[1] - 1
         start_val = np.zeros(state.shape[0])
         start_val = start_val[..., None]
-        start_val = start_val.astype(np.complex64)
+        start_val = start_val.astype(c_dtype)
 
         E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
         E1, _, _, logprobarr = fori_loop(
