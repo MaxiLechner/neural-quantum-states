@@ -39,8 +39,9 @@ def step_init(
         energy, E0, diff, logpsi, lprob, mask = energy_func(params, sample)
         grad = grad_func(params, sample, energy)
         var = energy_var(energy)
+        update = opt_update(i, grad, opt_state)
         return (
-            opt_update(i, grad, opt_state),
+            update,
             key,
             energy.real.mean(),
             energy.imag.mean(),
