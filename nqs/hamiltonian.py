@@ -55,7 +55,7 @@ def initialize_model_1d(
     energy = energy_init(logpsi, J, pbc, c_dtype)
 
     grad = grad_init(logpsi)
-    opt_init, opt_update, get_params = optimizers.adam(
+    opt_init, opt_update, get_params = optimizers.sgd(
         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
         lr
     )
@@ -75,7 +75,7 @@ def initialize_model_1d(
     return step, opt_state, key, get_params, net_apply, sample, logpsi, energy, grad
 
 
-def energy_ising_1d_init(log_amplitude, J, pbc):
+def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
     @jit
     def energy(net_params, state):
         @jit
