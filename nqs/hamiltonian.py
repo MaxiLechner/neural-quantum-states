@@ -55,7 +55,7 @@ def initialize_model_1d(
     energy = energy_init(logpsi, J, pbc, c_dtype)
 
     grad = grad_init(logpsi)
-    opt_init, opt_update, get_params = optimizers.sgd(
+    opt_init, opt_update, get_params = optimizers.adam(
         # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
         lr
     )
@@ -151,6 +151,18 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
             return np.exp(logpsi_fliped - logpsi)
 
+        def amp_fliped(state, i, j):
+            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
+            have their sign fliped. As logpsi returns the real and the imaginary part
+            seperately, we therefor need to recombine them into a complex valued array"""
+            flip_i = np.ones(state.shape)
+            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
+            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
+            fliped = state * flip_i
+            logpsi_fliped = log_amplitude(net_params, fliped)
+            logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
+            return logpsi_fliped
+
         @jit
         def body_fun1(i, loop_carry):
             E, s = loop_carry
@@ -159,11 +171,16 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
 
         @jit
         def body_fun2(i, loop_carry):
-            E, m, s, arr = loop_carry
-            diff = amplitude_diff(s, i, i + 1)
+            E, m, s = loop_carry
+            E += J * 0.25 * m[:, i] * amplitude_diff(s, i, i + 1)
+            return E, m, s
+
+        @jit
+        def body_fun3(i, loop_carry):
+            arr, s = loop_carry
+            diff = amp_fliped(s, i, i + 1)
             arr = jax.ops.index_update(arr, jax.ops.index[:, i], diff)
-            E += J * 0.25 * (m[:, i] * diff)
-            return E, m, s, arr
+            return arr, s
 
         def pbc_contrib1(E):
             E += J * 0.25 * state[:, -1] * state[:, 0]
@@ -187,15 +204,14 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
         start_val = start_val.astype(c_dtype)
 
         E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
-        E1, _, _, logprobarr = fori_loop(
-            loop_start, loop_end, body_fun2, (start_val, mask, state, logprobarr)
-        )
+        E1, _, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, mask, state))
+        logprobarr, _ = fori_loop(loop_start, loop_end, body_fun3, (logprobarr, state))
         # Can't use if statements in jitted code, need to use lax primitive instead.
         E0 = jax.lax.cond(pbc, E0, pbc_contrib1, E0, lambda E: np.add(E0, 0))
         E1 = jax.lax.cond(pbc, E1, pbc_contrib2, E1, lambda E: np.add(E1, 0))
 
         logprobarr = jax.ops.index_update(
-            logprobarr, jax.ops.index[:, -1], amplitude_diff(state, -1, 0)
+            logprobarr, jax.ops.index[:, -1], amp_fliped(state, -1, 0)
         )
 
         E = E0 + E1
