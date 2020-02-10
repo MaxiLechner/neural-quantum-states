@@ -1,7 +1,7 @@
 import jax
 from jax import random
 import jax.numpy as np
-from jax import jit
+from jax import jit, vmap
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
@@ -9,8 +9,10 @@ from .network import small_net_1d, small_resnet_1d
 from .wavefunction import log_amplitude_init
 from .sampler import sample_init
 from .optim import grad_init, step_init
+from .util import real_to_complex
 
 import matplotlib.pyplot as plt
+from functools import partial
 
 
 def initialize_model_1d(
@@ -52,7 +54,7 @@ def initialize_model_1d(
 
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
-    energy = energy_init(logpsi, J, pbc, c_dtype)
+    energy = energy_init(logpsi, net_apply, J, pbc, c_dtype)
 
     grad = grad_init(logpsi)
     opt_init, opt_update, get_params = optimizers.adam(
@@ -135,7 +137,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
     return energy
 
 
-def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
+def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     @jit
     def energy(net_params, state):
         @jit
@@ -151,6 +153,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
             return np.exp(logpsi_fliped - logpsi)
 
+        @jit
         def amp_fliped(state, i, j):
             """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
             have their sign fliped. As logpsi returns the real and the imaginary part
@@ -162,6 +165,33 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             logpsi_fliped = log_amplitude(net_params, fliped)
             logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
             return logpsi_fliped
+
+        @jit
+        def _vi_fliped(state, i, j):
+            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
+            have their sign fliped. As logpsi returns the real and the imaginary part
+            seperately, we therefor need to recombine them into a complex valued array"""
+
+            def index(x, y, i):
+                xi = x[i]  # shape: (N,2)
+                yi = y[i]  # shape: (N)
+                arange = np.arange(xi.shape[0])
+                return xi[arange, yi]
+
+            flip_i = np.ones(state.shape)
+            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
+            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
+            fliped = state * flip_i
+            vi_fliped = net_apply(net_params, fliped)
+            vi_fliped = real_to_complex(vi_fliped)
+
+            B, _, _ = state.shape
+            idx = (state + 1) / 2
+            idx = idx.astype(np.int32).squeeze()
+            index = vmap(partial(index, vi_fliped, idx))
+            vi_fliped = index(np.arange(B))[..., np.newaxis]
+            # vi_fliped = np.sum(vi_fliped, axis=1)
+            return vi_fliped
 
         @jit
         def body_fun1(i, loop_carry):
@@ -179,7 +209,18 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
         def body_fun3(i, loop_carry):
             arr, s = loop_carry
             diff = amp_fliped(s, i, i + 1)
+            # print("arr: ", arr.shape)
+            # print("diff: ", diff.shape)
             arr = jax.ops.index_update(arr, jax.ops.index[:, i], diff)
+            return arr, s
+
+        @jit
+        def body_fun4(i, loop_carry):
+            arr, s = loop_carry
+            vi = _vi_fliped(s, i, i + 1)
+            # print("arr: ", arr.shape)
+            # print("vi: ", vi.shape)
+            arr = jax.ops.index_update(arr, jax.ops.index[:, i], vi)
             return arr, s
 
         def pbc_contrib1(E):
@@ -190,12 +231,29 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             E += J * 0.25 * mask[:, -1] * amplitude_diff(state, -1, 0)
             return E
 
+        def index(x, y, i):
+            xi = x[i]  # shape: (N,2)
+            yi = y[i]  # shape: (N)
+            arange = np.arange(xi.shape[0])
+            return xi[arange, yi]
+
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask = -state * np.roll(state, -1, axis=1) + 1
         logpsi = log_amplitude(net_params, state)
         logpsi = logpsi[0] + logpsi[1] * 1j
 
+        vi = net_apply(net_params, state)
+        vi = real_to_complex(vi)
+
+        B, N, _ = state.shape
         logprobarr = np.zeros(state.shape, dtype=c_dtype)
+        vi_fliped = np.zeros((B, N, N, 1), dtype=c_dtype)
+
+        idx = (state + 1) / 2
+        idx = idx.astype(np.int32).squeeze()
+        index = vmap(partial(index, vi, idx))
+        vi = index(np.arange(B))[..., np.newaxis]
+        # vi = np.sum(vi, axis=1)
 
         loop_start = 0
         loop_end = state.shape[1] - 1
@@ -206,6 +264,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
         E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
         E1, _, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, mask, state))
         logprobarr, _ = fori_loop(loop_start, loop_end, body_fun3, (logprobarr, state))
+        vi_fliped, _ = fori_loop(loop_start, loop_end, body_fun4, (vi_fliped, state))
         # Can't use if statements in jitted code, need to use lax primitive instead.
         E0 = jax.lax.cond(pbc, E0, pbc_contrib1, E0, lambda E: np.add(E0, 0))
         E1 = jax.lax.cond(pbc, E1, pbc_contrib2, E1, lambda E: np.add(E1, 0))
@@ -214,9 +273,13 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             logprobarr, jax.ops.index[:, -1], amp_fliped(state, -1, 0)
         )
 
+        vi_fliped = jax.ops.index_update(
+            vi_fliped, jax.ops.index[:, -1], _vi_fliped(state, -1, 0)
+        )
+
         E = E0 + E1
 
-        return E, E0, E1, logpsi, logprobarr, mask
+        return E, E0, E1, logpsi, logprobarr, mask, vi, vi_fliped
 
     return energy
 

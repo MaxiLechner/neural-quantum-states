@@ -36,7 +36,9 @@ def step_init(
     def step(i, opt_state, key):
         params = get_params(opt_state)
         key, sample = sample_func(params, init_batch, key)
-        energy, E0, diff, logpsi, lprob, mask = energy_func(params, sample)
+        energy, E0, diff, logpsi, lprob, mask, vi, vi_fliped = energy_func(
+            params, sample
+        )
         grad = grad_func(params, sample, energy)
         var = energy_var(energy)
         update = opt_update(i, grad, opt_state)
@@ -54,6 +56,8 @@ def step_init(
             lprob,
             mask,
             grad,
+            vi,
+            vi_fliped,
         )
 
     return step
