@@ -53,6 +53,7 @@ def step_init(
             logpsi,
             lprob,
             mask,
+            grad,
         )
 
     return step
