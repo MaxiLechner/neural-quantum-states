@@ -77,7 +77,7 @@ def initialize_model_1d(
     return step, opt_state, key, get_params, net_apply, sample, logpsi, energy, grad
 
 
-def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
+def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     @jit
     def energy(net_params, state):
         @jit
@@ -132,7 +132,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
         # diff2 = np.exp(diff)
         # E = E0 + diff2
         # E = E0 - diff
-        return E, E0, diff, logpsi, E, E
+        return E, E0, diff, logpsi, E, E, E, E
 
     return energy
 
@@ -238,7 +238,7 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return xi[arange, yi]
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
-        mask = -state * np.roll(state, -1, axis=1) + 1
+        mask = state * np.roll(state, -1, axis=1) + 1
         logpsi = log_amplitude(net_params, state)
         logpsi = logpsi[0] + logpsi[1] * 1j
 
@@ -333,7 +333,7 @@ def energy_sutherland_1d_init(log_amplitude, J, pbc):
 
 @jit
 def energy_var(energy):
-    return np.var(energy)
+    return np.var(energy.real)
 
 
 @jit
