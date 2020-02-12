@@ -84,7 +84,7 @@ def resnet_block_1d(width, FilterSize):
         MaskedConv1d(width, FilterSize, padding="SAME"),
     )
     Shortcut = Identity
-    return stax.serial(FanOut(2), stax.parallel(Main, Shortcut), FanInSum, Relu)
+    return stax.serial(FanOut(2), stax.parallel(Main, Shortcut), FanInSum)
 
 
 def small_resnet_1d(width, FilterSize):
