@@ -86,7 +86,7 @@ def initialize_model_1d(
         opt_update,
         get_params,
     )
-    return step, opt_state, key, get_params, net_apply, sample, logpsi, energy, grad
+    return step, opt_state, key
 
 
 def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
