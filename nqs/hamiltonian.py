@@ -238,7 +238,7 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return xi[arange, yi]
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
-        mask = state * np.roll(state, -1, axis=1) + 1
+        mask = state * np.roll(state, -1, axis=1) - 1
         logpsi = log_amplitude(net_params, state)
         logpsi = logpsi[0] + logpsi[1] * 1j
 
