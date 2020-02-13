@@ -35,16 +35,31 @@ def initialize_model_1d(
         f_dtype = np.float64
         c_dtype = np.complex128
 
+    net_dtype = np.float32
+
     net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
-    net = net_dispatch[network]
+
     energy_dispatch = {
         "ising1d": energy_ising_1d_init,
         "heisenberg1d": energy_heisenberg_1d_init,
         "sutherland1d": energy_sutherland_1d_init,
     }
-    energy_init = energy_dispatch[hamiltonian]
 
-    model = net(width, filter_size)
+    try:
+        net = net_dispatch[network]
+    except KeyError:
+        print(
+            f"{network} is not a valid network. You can choose between small_net_1d and small_resnet_1d."
+        )
+        raise
+
+    try:
+        energy_init = energy_dispatch[hamiltonian]
+    except KeyError:
+        print(f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d.")
+        raise
+
+    model = net(width, filter_size, net_dtype=net_dtype)
     net_init, net_apply = model
     key = random.PRNGKey(seed)
     key, subkey = random.split(key)
@@ -57,10 +72,7 @@ def initialize_model_1d(
     energy = energy_init(logpsi, net_apply, J, pbc, c_dtype)
 
     grad = grad_init(logpsi)
-    opt_init, opt_update, get_params = optimizers.adam(
-        # optimizers.polynomial_decay(lr, 10, 0.00001, 3)
-        lr
-    )
+    opt_init, opt_update, get_params = optimizers.adam(lr)
     opt_state = opt_init(net_params)
     init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
     step = step_init(
@@ -79,31 +91,18 @@ def initialize_model_1d(
 
 def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     @jit
-    def energy(net_params, state):
+    def energy(net_params, config):
         @jit
-        def amplitude_diff(state, i):
-            """Compute amplitude ratio of logpsi and logpsi_fliped, where spin i has its
-            sign fliped. As logpsi returns the real and the imaginary part seperately,
+        def amplitude_diff(config, i):
+            """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
+            sign flipped. As logpsi returns the real and the imaginary part seperately,
             we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(state.shape)
+            flip_i = np.ones(config.shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            fliped = state * flip_i
-            logpsi_fliped = log_amplitude(net_params, fliped)
-            logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
-            return np.exp(logpsi_fliped - logpsi)  # , logpsi_fliped - logpsi
-            # return logpsi_fliped - logpsi
-
-        @jit
-        def body_fun1(i, loop_carry):
-            E, s = loop_carry
-            E -= s[:, i] * s[:, i + 1]
-            return E, s
-
-        @jit
-        def body_fun2(i, loop_carry):
-            E, s = loop_carry
-            E += amplitude_diff(s, i)
-            return E, s
+            flipped = config * flip_i
+            logpsi_flipped = log_amplitude(net_params, flipped)
+            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
+            return np.exp(logpsi_flipped - logpsi)
 
         @jit
         def body_fun(i, loop_carry):
@@ -111,65 +110,62 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             E -= J * (amplitude_diff(s, i) + s[:, i] * s[:, i + 1])
             return E, s
 
-        logpsi = log_amplitude(net_params, state)
+        def pbc_contrib(E):
+            E -= J * config[:, -1] * config[:, 0]
+            return E
+
+        logpsi = log_amplitude(net_params, config)
         logpsi = logpsi[0] + logpsi[1] * 1j
+        logpsi = logpsi.astype(c_dtype)
 
-        loop_start = 0
-        loop_end = state.shape[1] - 1
-        start_val = np.zeros(state.shape[0])
-        start_val = start_val[..., None]
-        start_val = start_val.astype(np.complex64)
+        start = 0
+        end = config.shape[1] - 1
+        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
 
-        # E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
-        # diff, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, state))
-        # diff += amplitude_diff(state, -1)
+        E, _ = fori_loop(start, end, body_fun, (start_val, config))
+        E -= amplitude_diff(config, -1)
 
-        E, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, state))
-        E -= amplitude_diff(state, -1)
-        E0 = E
-        diff = E
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda x: x)
 
-        # diff2 = np.exp(diff)
-        # E = E0 + diff2
-        # E = E0 - diff
-        return E, E0, diff, logpsi, E, E, E, E
+        return E, E, E, logpsi, E, E, E, E
 
     return energy
 
 
 def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     @jit
-    def energy(net_params, state):
+    def energy(net_params, config):
         @jit
-        def amplitude_diff(state, i, j):
-            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
-            have their sign fliped. As logpsi returns the real and the imaginary part
+        def amplitude_diff(config, i, j):
+            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(state.shape)
+            flip_i = np.ones(config.shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
-            fliped = state * flip_i
-            logpsi_fliped = log_amplitude(net_params, fliped)
-            logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
-            return np.exp(logpsi_fliped - logpsi)
+            flipped = config * flip_i
+            logpsi_flipped = log_amplitude(net_params, flipped)
+            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
+            return np.exp(logpsi_flipped - logpsi)
 
         @jit
-        def amp_fliped(state, i, j):
-            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
-            have their sign fliped. As logpsi returns the real and the imaginary part
+        def amp_fliped(config, i, j):
+            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(state.shape)
+            flip_i = np.ones(config.shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
-            fliped = state * flip_i
-            logpsi_fliped = log_amplitude(net_params, fliped)
-            logpsi_fliped = logpsi_fliped[0] + logpsi_fliped[1] * 1j
-            return logpsi_fliped
+            flipped = config * flip_i
+            logpsi_flipped = log_amplitude(net_params, flipped)
+            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
+            return logpsi_flipped
 
         @jit
-        def _vi_fliped(state, i, j):
-            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
-            have their sign fliped. As logpsi returns the real and the imaginary part
+        def _vi_fliped(config, i, j):
+            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
 
             def index(x, y, i):
@@ -178,15 +174,15 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
                 arange = np.arange(xi.shape[0])
                 return xi[arange, yi]
 
-            flip_i = np.ones(state.shape)
+            flip_i = np.ones(config.shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
-            fliped = state * flip_i
-            vi_fliped = net_apply(net_params, fliped)
+            flipped = config * flip_i
+            vi_fliped = net_apply(net_params, flipped)
             vi_fliped = real_to_complex(vi_fliped)
 
-            B, _, _ = state.shape
-            idx = (state + 1) / 2
+            B, _, _ = config.shape
+            idx = (config + 1) / 2
             idx = idx.astype(np.int32).squeeze()
             index = vmap(partial(index, vi_fliped, idx))
             vi_fliped = index(np.arange(B))[..., np.newaxis]
@@ -224,11 +220,11 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return arr, s
 
         def pbc_contrib1(E):
-            E += J * 0.25 * state[:, -1] * state[:, 0]
+            E += J * 0.25 * config[:, -1] * config[:, 0]
             return E
 
         def pbc_contrib2(E):
-            E += J * 0.25 * mask[:, -1] * amplitude_diff(state, -1, 0)
+            E += J * 0.25 * mask[:, -1] * amplitude_diff(config, -1, 0)
             return E
 
         def index(x, y, i):
@@ -238,43 +234,42 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return xi[arange, yi]
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
-        mask = state * np.roll(state, -1, axis=1) - 1
-        logpsi = log_amplitude(net_params, state)
+        mask = config * np.roll(config, -1, axis=1) - 1
+        logpsi = log_amplitude(net_params, config)
         logpsi = logpsi[0] + logpsi[1] * 1j
+        logpsi = logpsi.astype(c_dtype)
 
-        vi = net_apply(net_params, state)
+        vi = net_apply(net_params, config)
         vi = real_to_complex(vi)
 
-        B, N, _ = state.shape
-        logprobarr = np.zeros(state.shape, dtype=c_dtype)
+        B, N, _ = config.shape
+        logprobarr = np.zeros(config.shape, dtype=c_dtype)
         vi_fliped = np.zeros((B, N, N, 1), dtype=c_dtype)
 
-        idx = (state + 1) / 2
+        idx = (config + 1) / 2
         idx = idx.astype(np.int32).squeeze()
         index = vmap(partial(index, vi, idx))
         vi = index(np.arange(B))[..., np.newaxis]
         # vi = np.sum(vi, axis=1)
 
-        loop_start = 0
-        loop_end = state.shape[1] - 1
-        start_val = np.zeros(state.shape[0])
-        start_val = start_val[..., None]
-        start_val = start_val.astype(c_dtype)
+        start = 0
+        end = config.shape[1] - 1
+        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
 
-        E0, _ = fori_loop(loop_start, loop_end, body_fun1, (start_val, state))
-        E1, _, _ = fori_loop(loop_start, loop_end, body_fun2, (start_val, mask, state))
-        logprobarr, _ = fori_loop(loop_start, loop_end, body_fun3, (logprobarr, state))
-        vi_fliped, _ = fori_loop(loop_start, loop_end, body_fun4, (vi_fliped, state))
+        E0, _ = fori_loop(start, end, body_fun1, (start_val, config))
+        E1, _, _ = fori_loop(start, end, body_fun2, (start_val, mask, config))
+        logprobarr, _ = fori_loop(start, end, body_fun3, (logprobarr, config))
+        vi_fliped, _ = fori_loop(start, end, body_fun4, (vi_fliped, config))
         # Can't use if statements in jitted code, need to use lax primitive instead.
         E0 = jax.lax.cond(pbc, E0, pbc_contrib1, E0, lambda E: np.add(E0, 0))
         E1 = jax.lax.cond(pbc, E1, pbc_contrib2, E1, lambda E: np.add(E1, 0))
 
         logprobarr = jax.ops.index_update(
-            logprobarr, jax.ops.index[:, -1], amp_fliped(state, -1, 0)
+            logprobarr, jax.ops.index[:, -1], amp_fliped(config, -1, 0)
         )
 
         vi_fliped = jax.ops.index_update(
-            vi_fliped, jax.ops.index[:, -1], _vi_fliped(state, -1, 0)
+            vi_fliped, jax.ops.index[:, -1], _vi_fliped(config, -1, 0)
         )
 
         E = E0 + E1
@@ -284,17 +279,17 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     return energy
 
 
-def energy_sutherland_1d_init(log_amplitude, J, pbc):
+def energy_sutherland_1d_init(log_amplitude, J, pbc, c_dtype):
     @jit
-    def energy(net_params, state):
+    def energy(net_params, config):
         @jit
-        def amplitude_diff(state, i, j, idx):
-            """compute apmplitude ratio of logpsi and logpsi_fliped, where i and i+1
-            have their sign fliped. As logpsi returns the real and the imaginary part
+        def amplitude_diff(config, i, j, idx):
+            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
-            state = jax.ops.index_update(state, jax.ops.index[:, i], idx[:, 0])
-            state = jax.ops.index_update(state, jax.ops.index[:, j], idx[:, 1])
-            logpsi_swaped = log_amplitude(net_params, state)
+            config = jax.ops.index_update(config, jax.ops.index[:, i], idx[:, 0])
+            config = jax.ops.index_update(config, jax.ops.index[:, j], idx[:, 1])
+            logpsi_swaped = log_amplitude(net_params, config)
             logpsi_swaped = logpsi_swaped[0] + logpsi_swaped[1] * 1j
             return np.exp(logpsi_swaped - logpsi)
 
@@ -302,24 +297,23 @@ def energy_sutherland_1d_init(log_amplitude, J, pbc):
         def body_fun(i, loop_carry):
             E, s = loop_carry
             idx = s[:, [i + 1, i]]
-            E += amplitude_diff(state, i, i + 1, idx)
+            E += amplitude_diff(config, i, i + 1, idx)
             return E, s
 
         def pbc_contrib(E):
-            idx = state[:, [0, -1]]
-            E += amplitude_diff(state, -1, 0, idx)
+            idx = config[:, [0, -1]]
+            E += amplitude_diff(config, -1, 0, idx)
             return E
 
-        logpsi = log_amplitude(net_params, state)
+        logpsi = log_amplitude(net_params, config)
         logpsi = logpsi[0] + logpsi[1] * 1j
+        logpsi = logpsi.astype(c_dtype)
 
-        loop_start = 0
-        loop_end = state.shape[1] - 1
-        start_val = np.zeros(state.shape[0])
-        start_val = start_val[..., None]
-        start_val = start_val.astype(np.complex64)
+        start = 0
+        end = config.shape[1] - 1
+        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
 
-        E, _ = fori_loop(loop_start, loop_end, body_fun, (start_val, state))
+        E, _ = fori_loop(start, end, body_fun, (start_val, config))
 
         # Can't use if statements in jitted code, need to use lax primitive instead.
         E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda E: np.add(E, 0))
@@ -337,8 +331,8 @@ def energy_var(energy):
 
 
 @jit
-def magnetization(state):
-    mag = np.sum(state, axis=1)
+def magnetization(config):
+    mag = np.sum(config, axis=1)
     return np.mean(mag)
 
 
