@@ -50,7 +50,6 @@ flags.DEFINE_enum(
 flags.DEFINE_string(
     "filedir", "notebooks/results/", "Directory where data is saved.", short_name="f"
 )
-# flags.mark_flag_as_required('filename')
 
 
 def main(unused_argv):
@@ -95,25 +94,11 @@ def main(unused_argv):
     E_imag = []
     mag = []
     E_var = []
-    Diff = []
-    E0 = []
-    sample = []
-    lpsi = []
-    lprob_i = []
-    msk = []
 
     old_time = time()
-
     for i in range(FLAGS.epochs):
-        opt_state, key, energy, e_imag, magnetization, var, e0, diff, s, logpsi, lprob, mask = step(
-            i, opt_state, key
-        )
-        lprob_i.append(lprob)
-        msk.append(mask)
-        lpsi.append(logpsi)
-        E0.append(e0)
-        Diff.append(diff)
-        sample.append(s)
+        opt_state, key, energy, e_imag, magnetization, var = step(i, opt_state, key)
+
         E.append(energy)
         E_imag.append(e_imag)
         mag.append(magnetization)
@@ -157,12 +142,6 @@ def main(unused_argv):
     directory = directory / subdir
 
     if directory.is_dir():
-        np.save(directory / "lprob_i", lprob_i)
-        np.save(directory / "mask", msk)
-        np.save(directory / "logpsi", lpsi)
-        np.save(directory / "diff", Diff)
-        np.save(directory / "e0", E0)
-        np.save(directory / "sample", sample)
         np.save(directory / "energy", E)
         np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
@@ -170,12 +149,6 @@ def main(unused_argv):
         np.save(directory / "exact_energy", gs_energy)
     else:
         directory.mkdir(parents=True)
-        np.save(directory / "lprob_i", lprob_i)
-        np.save(directory / "mask", msk)
-        np.save(directory / "logpsi", lpsi)
-        np.save(directory / "diff", Diff)
-        np.save(directory / "e0", E0)
-        np.save(directory / "sample", sample)
         np.save(directory / "energy", E)
         np.save(directory / "energy_imag", E_imag)
         np.save(directory / "magnetization", mag)
