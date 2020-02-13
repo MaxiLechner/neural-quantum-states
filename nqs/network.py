@@ -14,6 +14,7 @@ def MaskedConv1d(
     padding="VALID",
     W_init=None,
     b_init=randn(1e-6),
+    net_dtype=np.float32,
 ):
     """Layer construction function for a 1d masked convolution layer."""
     assert len(filter_shape) == 1, "filter_shape must be one dimensional"
@@ -58,16 +59,17 @@ def MaskedConv1d(
         bias_shape = [out_chan if c == "C" else 1 for c in out_spec]
         bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
         W, b = (
-            W_init(rng, kernel_shape, dtype=np.float64),
-            b_init(rng, bias_shape, dtype=np.float64),
+            W_init(rng, kernel_shape, dtype=net_dtype),
+            b_init(rng, bias_shape, dtype=net_dtype),
         )
         return output_shape, (W, b)
 
     def apply_fun(params, inputs, **kwargs):
         W, b = params
+        W = W * mask
         return (
             lax.conv_general_dilated(
-                inputs, W * mask, strides, padding, one, one, dimension_numbers
+                inputs, W, strides, padding, one, one, dimension_numbers
             )
             + b
         )
@@ -75,56 +77,56 @@ def MaskedConv1d(
     return init_fun, apply_fun
 
 
-def resnet_block_1d(width, FilterSize):
+def resnet_block_1d(width, FilterSize, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, FilterSize, padding="SAME"),
+        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
     )
     Shortcut = Identity
     return stax.serial(FanOut(2), stax.parallel(Main, Shortcut), FanInSum)
 
 
-def small_resnet_1d(width, FilterSize):
+def small_resnet_1d(width, FilterSize, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
         Relu,
-        resnet_block_1d(width, (FilterSize,)),
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        resnet_block_1d(width, (FilterSize,)),
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        resnet_block_1d(width, (FilterSize,)),
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME"),
+        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
     )
     return Main
 
 
-def small_net2_1d(width, FilterSize):
+def small_net2_1d(width, FilterSize, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME"),
+        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
     )
     return Main
 
 
-def small_net_1d(width, FilterSize):
+def small_net_1d(width, FilterSize, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME"),
+        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME"),
+        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
     )
     return Main
