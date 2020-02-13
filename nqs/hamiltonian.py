@@ -1,7 +1,7 @@
 import jax
 from jax import random
 import jax.numpy as np
-from jax import jit, vmap
+from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
@@ -9,10 +9,8 @@ from .network import small_net_1d, small_resnet_1d
 from .wavefunction import log_amplitude_init
 from .sampler import sample_init
 from .optim import grad_init, step_init
-from .util import real_to_complex
 
 import matplotlib.pyplot as plt
-from functools import partial
 
 
 def initialize_model_1d(
@@ -56,7 +54,9 @@ def initialize_model_1d(
     try:
         energy_init = energy_dispatch[hamiltonian]
     except KeyError:
-        print(f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d.")
+        print(
+            f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d."
+        )
         raise
 
     model = net(width, filter_size, net_dtype=net_dtype)
@@ -111,6 +111,7 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return E, s
 
         def pbc_contrib(E):
+            "Contribution due to periodic boundary condition."
             E -= J * config[:, -1] * config[:, 0]
             return E
 
@@ -128,7 +129,7 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         # Can't use if statements in jitted code, need to use lax primitive instead.
         E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda x: x)
 
-        return E, E, E, logpsi, E, E, E, E
+        return E
 
     return energy
 
@@ -150,88 +151,27 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return np.exp(logpsi_flipped - logpsi)
 
         @jit
-        def amp_fliped(config, i, j):
-            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
-            have their sign flipped. As logpsi returns the real and the imaginary part
-            seperately, we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(config.shape)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
-            flipped = config * flip_i
-            logpsi_flipped = log_amplitude(net_params, flipped)
-            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
-            return logpsi_flipped
-
-        @jit
-        def _vi_fliped(config, i, j):
-            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
-            have their sign flipped. As logpsi returns the real and the imaginary part
-            seperately, we therefor need to recombine them into a complex valued array"""
-
-            def index(x, y, i):
-                xi = x[i]  # shape: (N,2)
-                yi = y[i]  # shape: (N)
-                arange = np.arange(xi.shape[0])
-                return xi[arange, yi]
-
-            flip_i = np.ones(config.shape)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
-            flipped = config * flip_i
-            vi_fliped = net_apply(net_params, flipped)
-            vi_fliped = real_to_complex(vi_fliped)
-
-            B, _, _ = config.shape
-            idx = (config + 1) / 2
-            idx = idx.astype(np.int32).squeeze()
-            index = vmap(partial(index, vi_fliped, idx))
-            vi_fliped = index(np.arange(B))[..., np.newaxis]
-            # vi_fliped = np.sum(vi_fliped, axis=1)
-            return vi_fliped
-
-        @jit
-        def body_fun1(i, loop_carry):
-            E, s = loop_carry
-            E += J * 0.25 * (s[:, i] * s[:, i + 1])
-            return E, s
-
-        @jit
-        def body_fun2(i, loop_carry):
+        def body_fun(i, loop_carry):
             E, m, s = loop_carry
-            E += J * 0.25 * m[:, i] * amplitude_diff(s, i, i + 1)
+            E += (
+                J
+                * 0.25
+                * (m[:, i] * amplitude_diff(s, i, i + 1) + s[:, i] * s[:, i + 1])
+            )
             return E, m, s
 
         @jit
-        def body_fun3(i, loop_carry):
-            arr, s = loop_carry
-            diff = amp_fliped(s, i, i + 1)
-            # print("arr: ", arr.shape)
-            # print("diff: ", diff.shape)
-            arr = jax.ops.index_update(arr, jax.ops.index[:, i], diff)
-            return arr, s
-
-        @jit
-        def body_fun4(i, loop_carry):
-            arr, s = loop_carry
-            vi = _vi_fliped(s, i, i + 1)
-            # print("arr: ", arr.shape)
-            # print("vi: ", vi.shape)
-            arr = jax.ops.index_update(arr, jax.ops.index[:, i], vi)
-            return arr, s
-
-        def pbc_contrib1(E):
-            E += J * 0.25 * config[:, -1] * config[:, 0]
+        def pbc_contrib(E):
+            "Contribution due to periodic boundary condition."
+            E += (
+                J
+                * 0.25
+                * (
+                    mask[:, -1] * amplitude_diff(config, -1, 0)
+                    + config[:, -1] * config[:, 0]
+                )
+            )
             return E
-
-        def pbc_contrib2(E):
-            E += J * 0.25 * mask[:, -1] * amplitude_diff(config, -1, 0)
-            return E
-
-        def index(x, y, i):
-            xi = x[i]  # shape: (N,2)
-            yi = y[i]  # shape: (N)
-            arange = np.arange(xi.shape[0])
-            return xi[arange, yi]
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask = config * np.roll(config, -1, axis=1) - 1
@@ -239,42 +179,16 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         logpsi = logpsi[0] + logpsi[1] * 1j
         logpsi = logpsi.astype(c_dtype)
 
-        vi = net_apply(net_params, config)
-        vi = real_to_complex(vi)
-
-        B, N, _ = config.shape
-        logprobarr = np.zeros(config.shape, dtype=c_dtype)
-        vi_fliped = np.zeros((B, N, N, 1), dtype=c_dtype)
-
-        idx = (config + 1) / 2
-        idx = idx.astype(np.int32).squeeze()
-        index = vmap(partial(index, vi, idx))
-        vi = index(np.arange(B))[..., np.newaxis]
-        # vi = np.sum(vi, axis=1)
-
         start = 0
         end = config.shape[1] - 1
         start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
 
-        E0, _ = fori_loop(start, end, body_fun1, (start_val, config))
-        E1, _, _ = fori_loop(start, end, body_fun2, (start_val, mask, config))
-        logprobarr, _ = fori_loop(start, end, body_fun3, (logprobarr, config))
-        vi_fliped, _ = fori_loop(start, end, body_fun4, (vi_fliped, config))
+        E, _, _ = fori_loop(start, end, body_fun, (start_val, mask, config))
+
         # Can't use if statements in jitted code, need to use lax primitive instead.
-        E0 = jax.lax.cond(pbc, E0, pbc_contrib1, E0, lambda E: np.add(E0, 0))
-        E1 = jax.lax.cond(pbc, E1, pbc_contrib2, E1, lambda E: np.add(E1, 0))
+        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda x: x)
 
-        logprobarr = jax.ops.index_update(
-            logprobarr, jax.ops.index[:, -1], amp_fliped(config, -1, 0)
-        )
-
-        vi_fliped = jax.ops.index_update(
-            vi_fliped, jax.ops.index[:, -1], _vi_fliped(config, -1, 0)
-        )
-
-        E = E0 + E1
-
-        return E, E0, E1, logpsi, logprobarr, mask, vi, vi_fliped
+        return E
 
     return energy
 
@@ -301,6 +215,7 @@ def energy_sutherland_1d_init(log_amplitude, J, pbc, c_dtype):
             return E, s
 
         def pbc_contrib(E):
+            "Contribution due to periodic boundary condition."
             idx = config[:, [0, -1]]
             E += amplitude_diff(config, -1, 0, idx)
             return E
@@ -352,11 +267,3 @@ def callback(params, i, ax):
         plt.legend()
         plt.draw()
         plt.pause(1.0 / 60.0)
-
-    # visualize histogram of weights
-    # pars = get_params(opt_state)
-    # plt.cla()
-    # _, ax = plt.subplots(1, 5, figsize=(30, 3))
-    # for i in range(len(ax)):
-    #     ax[i].hist(pars[i * 2][0].flatten())
-    #     # ax[i].set_title("layer", i * 2)
