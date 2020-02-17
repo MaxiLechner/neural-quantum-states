@@ -1,5 +1,5 @@
 import jax
-from jax import random
+from jax import random, config
 import jax.numpy as np
 from jax import jit
 from jax.lax import fori_loop
@@ -24,16 +24,20 @@ def initialize_model_1d(
     batch_size,
     pbc,
     network,
-    f32=True,
+    x64=False,
 ):
-    if f32:
+    if config.read("jax_enable_x64") and x64:
+        f_dtype = np.float64
+        c_dtype = np.complex128
+    elif not config.read("jax_enable_x64") and not x64:
         f_dtype = np.float32
         c_dtype = np.complex64
     else:
-        f_dtype = np.float64
-        c_dtype = np.complex128
-
-    net_dtype = np.float32
+        raise Exception(
+            """To use x32/x64 mode, both the variable x64 and the environment variable
+            jax_enable_x64 have to agree. Setting the latter variable is described in
+            https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
+        )
 
     net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
 
@@ -59,7 +63,7 @@ def initialize_model_1d(
         )
         raise
 
-    model = net(width, filter_size, net_dtype=net_dtype)
+    model = net(width, filter_size, net_dtype=f_dtype)
     net_init, net_apply = model
     key = random.PRNGKey(seed)
     key, subkey = random.split(key)
@@ -177,7 +181,6 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         mask = config * np.roll(config, -1, axis=1) - 1
         logpsi = log_amplitude(net_params, config)
         logpsi = logpsi[0] + logpsi[1] * 1j
-        logpsi = logpsi.astype(c_dtype)
 
         start = 0
         end = config.shape[1] - 1
