@@ -101,7 +101,7 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
             sign flipped. As logpsi returns the real and the imaginary part seperately,
             we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(config.shape)
+            flip_i = np.ones(shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
             flipped = config * flip_i
             logpsi_flipped = log_amplitude(net_params, flipped)
@@ -111,28 +111,21 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         @jit
         def body_fun(i, loop_carry):
             E, s = loop_carry
-            E -= J * (amplitude_diff(s, i) + s[:, i] * s[:, i + 1])
+            E -= J * (amplitude_diff(s, i) + s[:, i] * s[:, (i + 1) % N])
             return E, s
-
-        def pbc_contrib(E):
-            "Contribution due to periodic boundary condition."
-            E -= J * config[:, -1] * config[:, 0]
-            return E
 
         logpsi = log_amplitude(net_params, config)
         logpsi = logpsi[0] + logpsi[1] * 1j
         logpsi = logpsi.astype(c_dtype)
 
         start = 0
-        end = config.shape[1] - 1
-        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
+        shape = config.shape
+        B, N, _ = shape
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
+        start_val = np.zeros(B, dtype=c_dtype)[..., None]
 
         E, _ = fori_loop(start, end, body_fun, (start_val, config))
-        E -= amplitude_diff(config, -1)
-
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda x: x)
-
         return E
 
     return energy
@@ -142,13 +135,13 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     @jit
     def energy(net_params, config):
         @jit
-        def amplitude_diff(config, i, j):
+        def amplitude_diff(config, i):
             """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
             have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(config.shape)
+            flip_i = np.ones(shape)
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, j], -1)
+            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, (i + 1) % N], -1)
             flipped = config * flip_i
             logpsi_flipped = log_amplitude(net_params, flipped)
             logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
@@ -160,22 +153,9 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             E += (
                 J
                 * 0.25
-                * (m[:, i] * amplitude_diff(s, i, i + 1) + s[:, i] * s[:, i + 1])
+                * (m[:, i] * amplitude_diff(s, i) + s[:, i] * s[:, (i + 1) % N])
             )
             return E, m, s
-
-        @jit
-        def pbc_contrib(E):
-            "Contribution due to periodic boundary condition."
-            E += (
-                J
-                * 0.25
-                * (
-                    mask[:, -1] * amplitude_diff(config, -1, 0)
-                    + config[:, -1] * config[:, 0]
-                )
-            )
-            return E
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask = config * np.roll(config, -1, axis=1) - 1
@@ -183,14 +163,14 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         logpsi = logpsi[0] + logpsi[1] * 1j
 
         start = 0
-        end = config.shape[1] - 1
-        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
+        shape = config.shape
+        B, N, _ = shape
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
+
+        start_val = np.zeros(B, dtype=c_dtype)[..., None]
 
         E, _, _ = fori_loop(start, end, body_fun, (start_val, mask, config))
-
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda x: x)
-
         return E
 
     return energy
