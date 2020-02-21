@@ -90,7 +90,17 @@ def initialize_model_1d(
         opt_update,
         get_params,
     )
-    return step, opt_state, key
+    return (
+        step,
+        opt_state,
+        key,
+        get_params,
+        energy,
+        sample,
+        grad,
+        init_batch,
+        opt_update,
+    )
 
 
 def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
