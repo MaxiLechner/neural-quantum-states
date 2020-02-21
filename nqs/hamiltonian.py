@@ -100,6 +100,7 @@ def initialize_model_1d(
         grad,
         init_batch,
         opt_update,
+        logpsi,
     )
 
 
