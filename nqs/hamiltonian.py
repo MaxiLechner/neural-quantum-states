@@ -25,6 +25,7 @@ def initialize_model_1d(
     pbc,
     network,
     x64=False,
+    one_hot=True,
 ):
     if config.read("jax_enable_x64") and x64:
         f_dtype = np.float64
@@ -63,13 +64,19 @@ def initialize_model_1d(
         )
         raise
 
-    model = net(width, filter_size, net_dtype=f_dtype)
+    num_classes = 2
+    model = net(width, filter_size, one_hot=one_hot, net_dtype=f_dtype)
     net_init, net_apply = model
     key = random.PRNGKey(seed)
     key, subkey = random.split(key)
-    in_shape = (-1, num_spins, 1)
-    _, net_params = net_init(subkey, in_shape)
     net_apply = jit(net_apply)
+
+    if one_hot:
+        in_shape = (-1, num_spins, num_classes)
+        _, net_params = net_init(subkey, in_shape)
+    else:
+        in_shape = (-1, num_spins, 1)
+        _, net_params = net_init(subkey, in_shape)
 
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
@@ -101,6 +108,8 @@ def initialize_model_1d(
         init_batch,
         opt_update,
         logpsi,
+        net_apply,
+        net_init,
     )
 
 
