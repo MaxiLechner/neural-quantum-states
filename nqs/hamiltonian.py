@@ -1,7 +1,7 @@
 import jax
 from jax import random, config
 import jax.numpy as np
-from jax import jit
+from jax import jit, jacrev
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
@@ -80,9 +80,10 @@ def initialize_model_1d(
 
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
+    grad_psi = jacrev(logpsi)
+    grad = grad_init(grad_psi)
     energy = energy_init(logpsi, net_apply, J, pbc, c_dtype)
 
-    grad = grad_init(logpsi)
     opt_init, opt_update, get_params = optimizers.adam(lr)
     opt_state = opt_init(net_params)
     init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
