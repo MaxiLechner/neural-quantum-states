@@ -31,8 +31,8 @@ def initialize_model_1d(
         f_dtype = np.float64
         c_dtype = np.complex128
     elif not config.read("jax_enable_x64") and not x64:
-        f_dtype = np.float32
-        c_dtype = np.complex64
+        f_dtype = np.float16
+        c_dtype = np.complex32
     else:
         raise Exception(
             """To use x32/x64 mode, both the variable x64 and the environment variable
