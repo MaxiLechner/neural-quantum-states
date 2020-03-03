@@ -11,6 +11,7 @@ from .sampler import sample_init
 from .optim import grad_init, step_init
 
 import matplotlib.pyplot as plt
+import pdb
 
 
 def initialize_model_1d(
@@ -27,12 +28,14 @@ def initialize_model_1d(
     x64=False,
     one_hot=True,
 ):
+    pdb.set_trace()
+    print("x64")
     if config.read("jax_enable_x64") and x64:
         f_dtype = np.float64
         c_dtype = np.complex128
     elif not config.read("jax_enable_x64") and not x64:
-        f_dtype = np.float16
-        c_dtype = np.complex32
+        f_dtype = np.float32
+        c_dtype = np.complex64
     else:
         raise Exception(
             """To use x32/x64 mode, both the variable x64 and the environment variable
@@ -63,6 +66,7 @@ def initialize_model_1d(
             f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d."
         )
         raise
+    print("dispatch")
 
     num_classes = 2
     model = net(width, filter_size, one_hot=one_hot, net_dtype=f_dtype)
@@ -70,7 +74,7 @@ def initialize_model_1d(
     key = random.PRNGKey(seed)
     key, subkey = random.split(key)
     net_apply = jit(net_apply)
-
+    print("net_apply")
     if one_hot:
         in_shape = (-1, num_spins, num_classes)
         _, net_params = net_init(subkey, in_shape)
@@ -83,7 +87,7 @@ def initialize_model_1d(
     grad_psi = jacrev(logpsi)
     grad = grad_init(grad_psi)
     energy = energy_init(logpsi, net_apply, J, pbc, c_dtype)
-
+    print("energy")
     opt_init, opt_update, get_params = optimizers.adam(lr)
     opt_state = opt_init(net_params)
     init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
@@ -98,6 +102,7 @@ def initialize_model_1d(
         opt_update,
         get_params,
     )
+    print("step")
     return (
         step,
         opt_state,
