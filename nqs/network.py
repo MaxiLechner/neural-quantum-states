@@ -1,4 +1,4 @@
-from jax import lax
+from jax import lax, random
 import jax.numpy as np
 from jax.experimental import stax
 from jax.experimental.stax import (
@@ -8,10 +8,29 @@ from jax.experimental.stax import (
     Identity,
     randn,
     glorot,
+    glorot_normal,
+    normal,
     elementwise,
 )
 
 import itertools
+
+
+def MaskedDense(out_dim, W_init=glorot_normal(), b_init=normal(), k=0):
+    """Layer constructor function for a dense (fully-connected) layer."""
+
+    def init_fun(rng, input_shape):
+        output_shape = input_shape[:-1] + (out_dim,)
+        k1, k2 = random.split(rng)
+        W, b = W_init(k1, (input_shape[-1], out_dim)), b_init(k2, (out_dim,))
+        return output_shape, (W, b)
+
+    def apply_fun(params, inputs, **kwargs):
+        W, b = params
+        W = np.triu(W, k)
+        return np.dot(inputs, W) + b
+
+    return init_fun, apply_fun
 
 
 def MaskedConv1d(
@@ -166,6 +185,22 @@ def small_net_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
         MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
         Relu,
         MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
+    )
+    if one_hot:
+        return stax.serial(Onehot, Main)
+    else:
+        return Main
+
+
+def small_dense_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
+    Main = stax.serial(
+        MaskedDense(width, k=1),
+        Relu,
+        MaskedDense(width),
+        Relu,
+        MaskedDense(width),
+        Relu,
+        MaskedDense(4),
     )
     if one_hot:
         return stax.serial(Onehot, Main)
