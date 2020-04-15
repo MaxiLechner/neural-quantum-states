@@ -149,6 +149,9 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         start_val = np.zeros(B, dtype=c_dtype)[..., None]
 
         E, _ = fori_loop(start, end, body_fun, (start_val, config))
+        E = jax.lax.cond(
+            pbc, E, lambda x: x, E, lambda x: x - amplitude_diff(config, -1)
+        )
         return E
 
     return energy
