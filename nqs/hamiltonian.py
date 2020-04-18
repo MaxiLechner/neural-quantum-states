@@ -1,14 +1,14 @@
 import jax
 from jax import random, config
 import jax.numpy as np
-from jax import jit, jacrev
+from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
 from .network import small_net_1d, small_resnet_1d, small_dense_1d
 from .wavefunction import log_amplitude_init
 from .sampler import sample_init
-from .optim import grad_init, step_init
+from .optim import loss_init, step_init
 
 import matplotlib.pyplot as plt
 
@@ -83,16 +83,15 @@ def initialize_model_1d(
 
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
-    grad_psi = jacrev(logpsi)
-    grad = grad_init(grad_psi)
-    energy = energy_init(logpsi, net_apply, J, pbc, c_dtype)
+    energy = energy_init(logpsi, J, pbc, c_dtype)
+    loss = loss_init(energy, logpsi)
     opt_init, opt_update, get_params = optimizers.adam(lr)
     opt_state = opt_init(net_params)
     init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
     step = step_init(
         energy,
         sample,
-        grad,
+        loss,
         energy_var,
         magnetization,
         logpsi,
@@ -107,7 +106,7 @@ def initialize_model_1d(
         get_params,
         energy,
         sample,
-        grad,
+        loss,
         init_batch,
         opt_update,
         logpsi,
@@ -116,7 +115,7 @@ def initialize_model_1d(
     )
 
 
-def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
+def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
     @jit
     def energy(net_params, config):
         @jit
@@ -128,7 +127,6 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
             flipped = config * flip_i
             logpsi_flipped = log_amplitude(net_params, flipped)
-            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
             return np.exp(logpsi_flipped - logpsi)
 
         @jit
@@ -138,7 +136,6 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             return E, s
 
         logpsi = log_amplitude(net_params, config)
-        logpsi = logpsi[0] + logpsi[1] * 1j
         logpsi = logpsi.astype(c_dtype)
 
         start = 0
@@ -157,7 +154,7 @@ def energy_ising_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
     return energy
 
 
-def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
+def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
     @jit
     def energy(net_params, config):
         @jit
@@ -170,7 +167,6 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
             flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, (i + 1) % N], -1)
             flipped = config * flip_i
             logpsi_flipped = log_amplitude(net_params, flipped)
-            logpsi_flipped = logpsi_flipped[0] + logpsi_flipped[1] * 1j
             return np.exp(logpsi_flipped - logpsi)
 
         @jit
@@ -186,7 +182,6 @@ def energy_heisenberg_1d_init(log_amplitude, net_apply, J, pbc, c_dtype):
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask = config * np.roll(config, -1, axis=1) - 1
         logpsi = log_amplitude(net_params, config)
-        logpsi = logpsi[0] + logpsi[1] * 1j
 
         start = 0
         shape = config.shape
@@ -230,7 +225,6 @@ def energy_sutherland_1d_init(log_amplitude, J, pbc, c_dtype):
             return E
 
         logpsi = log_amplitude(net_params, config)
-        logpsi = logpsi[0] + logpsi[1] * 1j
         logpsi = logpsi.astype(c_dtype)
 
         start = 0
