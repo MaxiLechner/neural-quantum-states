@@ -31,6 +31,6 @@ def log_amplitude_init(net_apply):
         vi = index(np.arange(B))[..., np.newaxis]
         logpsi = vi - 0.5 * np.log(nc)
         logpsi = np.sum(logpsi, axis=1)
-        return np.real(logpsi), np.imag(logpsi)
+        return logpsi
 
     return log_amplitude
