@@ -5,7 +5,7 @@ from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
-from .network import small_net_1d, small_resnet_1d, small_dense_1d
+from .network import small_net_1d, small_resnet_1d
 from .wavefunction import log_amplitude_init
 from .sampler import sample_init
 from .optim import loss_init, step_init
@@ -40,16 +40,11 @@ def initialize_model_1d(
             https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
         )
 
-    net_dispatch = {
-        "small_dense_1d": small_dense_1d,
-        "small_net_1d": small_net_1d,
-        "small_resnet_1d": small_resnet_1d,
-    }
+    net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
 
     energy_dispatch = {
         "ising1d": energy_ising_1d_init,
         "heisenberg1d": energy_heisenberg_1d_init,
-        "sutherland1d": energy_sutherland_1d_init,
     }
 
     try:
@@ -84,10 +79,10 @@ def initialize_model_1d(
     sample = sample_init(net_apply)
     logpsi = log_amplitude_init(net_apply)
     energy = energy_init(logpsi, J, pbc, c_dtype)
-    loss = loss_init(energy, logpsi)
+    loss = loss_init(logpsi)
     opt_init, opt_update, get_params = optimizers.adam(lr)
     opt_state = opt_init(net_params)
-    init_batch = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
+    init_config = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
     step = step_init(
         energy,
         sample,
@@ -95,7 +90,7 @@ def initialize_model_1d(
         energy_var,
         magnetization,
         logpsi,
-        init_batch,
+        init_config,
         opt_update,
         get_params,
     )
@@ -107,7 +102,7 @@ def initialize_model_1d(
         energy,
         sample,
         loss,
-        init_batch,
+        init_config,
         opt_update,
         logpsi,
         net_apply,
@@ -193,52 +188,6 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
 
         E, _, _ = fori_loop(start, end, body_fun, (start_val, mask, config))
         return E
-
-    return energy
-
-
-def energy_sutherland_1d_init(log_amplitude, J, pbc, c_dtype):
-    @jit
-    def energy(net_params, config):
-        @jit
-        def amplitude_diff(config, i, j, idx):
-            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
-            have their sign flipped. As logpsi returns the real and the imaginary part
-            seperately, we therefor need to recombine them into a complex valued array"""
-            config = jax.ops.index_update(config, jax.ops.index[:, i], idx[:, 0])
-            config = jax.ops.index_update(config, jax.ops.index[:, j], idx[:, 1])
-            logpsi_swaped = log_amplitude(net_params, config)
-            logpsi_swaped = logpsi_swaped[0] + logpsi_swaped[1] * 1j
-            return np.exp(logpsi_swaped - logpsi)
-
-        @jit
-        def body_fun(i, loop_carry):
-            E, s = loop_carry
-            idx = s[:, [i + 1, i]]
-            E += amplitude_diff(config, i, i + 1, idx)
-            return E, s
-
-        def pbc_contrib(E):
-            "Contribution due to periodic boundary condition."
-            idx = config[:, [0, -1]]
-            E += amplitude_diff(config, -1, 0, idx)
-            return E
-
-        logpsi = log_amplitude(net_params, config)
-        logpsi = logpsi.astype(c_dtype)
-
-        start = 0
-        end = config.shape[1] - 1
-        start_val = np.zeros(config.shape[0], dtype=c_dtype)[..., None]
-
-        E, _ = fori_loop(start, end, body_fun, (start_val, config))
-
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        E = jax.lax.cond(pbc, E, pbc_contrib, E, lambda E: np.add(E, 0))
-
-        E0 = E
-        E1 = E
-        return E, E0, E1, logpsi
 
     return energy
 
