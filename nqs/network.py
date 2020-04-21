@@ -1,4 +1,4 @@
-from jax import lax, random
+from jax import lax
 import jax.numpy as np
 from jax.experimental import stax
 from jax.experimental.stax import (
@@ -8,29 +8,10 @@ from jax.experimental.stax import (
     Identity,
     randn,
     glorot,
-    glorot_normal,
-    normal,
     elementwise,
 )
 
 import itertools
-
-
-def MaskedDense(out_dim, W_init=glorot_normal(), b_init=normal(), k=0):
-    """Layer constructor function for a dense (fully-connected) layer."""
-
-    def init_fun(rng, input_shape):
-        output_shape = input_shape[:-1] + (out_dim,)
-        k1, k2 = random.split(rng)
-        W, b = W_init(k1, (input_shape[-1], out_dim)), b_init(k2, (out_dim,))
-        return output_shape, (W, b)
-
-    def apply_fun(params, inputs, **kwargs):
-        W, b = params
-        W = np.triu(W, k)
-        return np.dot(inputs, W) + b
-
-    return init_fun, apply_fun
 
 
 def MaskedConv1d(
@@ -38,7 +19,7 @@ def MaskedConv1d(
     filter_shape,
     is_first_layer=False,
     strides=None,
-    padding="VALID",
+    padding="SAME",
     W_init=None,
     b_init=randn(1e-6),
     net_dtype=np.float32,
@@ -105,36 +86,26 @@ def MaskedConv1d(
 
 
 def one_hot(x, num_classes=2, net_dtype=np.float32):
-    """One-hot encodes the given indicies.
-  Each index in the input ``x`` is encoded as a vector of zeros of length
-  ``num_classes`` with the element at ``index`` set to one::
-  >>> jax.nn.one_hot(np.array([0, 1, 2]), 3)
-  DeviceArray([[1., 0., 0.],
-               [0., 1., 0.],
-               [0., 0., 1.]], dtype=float32)
-  Indicies outside the range [0, num_classes) will be encoded as zeros::
-  >>> jax.nn.one_hot(np.array([-1, 3]), 3)
-  DeviceArray([[0., 0., 0.],
-               [0., 0., 0.]], dtype=float32)
-  Args:
-    x: A tensor of indices.
-    num_classes: Number of classes in the one-hot dimension.
-    dtype: optional, a float dtype for the returned values (default float64 if
-      jax_enable_x64 is true, otherwise float32).
-  """
+    """One-hot encodes the given indicies."""
     return np.array(x == np.arange(num_classes, dtype=x.dtype), dtype=net_dtype)
 
 
+def real_to_complex(x):
+    """Turn real valued input array into complex valued output array."""
+    return x[:, :, [0, 2]] * np.exp(x[:, :, [1, 3]] * 1j)  # shape (N,M,4) -> (N,M,2)
+
+
 Onehot = elementwise(one_hot)
+Real_to_complex = elementwise(real_to_complex)
 
 
 def resnet_block_1d(width, FilterSize, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, FilterSize, net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, FilterSize, net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, FilterSize, padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, FilterSize, net_dtype=net_dtype),
     )
     Shortcut = Identity
     return stax.serial(FanOut(2), stax.parallel(Main, Shortcut), FanInSum)
@@ -142,7 +113,7 @@ def resnet_block_1d(width, FilterSize, net_dtype=np.float32):
 
 def small_resnet_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, (FilterSize,), True, net_dtype=net_dtype),
         Relu,
         resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
@@ -150,25 +121,8 @@ def small_resnet_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
         Relu,
         resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
-    )
-    if one_hot:
-        return stax.serial(Onehot, Main)
-    else:
-        return Main
-
-
-def small_net2_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
-    Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
-        Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
-        Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
-        Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
-        Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(4, (FilterSize,), net_dtype=net_dtype),
+        Real_to_complex,
     )
     if one_hot:
         return stax.serial(Onehot, Main)
@@ -178,29 +132,14 @@ def small_net2_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
 
 def small_net_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
     Main = stax.serial(
-        MaskedConv1d(width, (FilterSize,), True, padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, (FilterSize,), True, net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(width, (FilterSize,), padding="SAME", net_dtype=net_dtype),
+        MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
-        MaskedConv1d(4, (FilterSize,), padding="SAME", net_dtype=net_dtype),
-    )
-    if one_hot:
-        return stax.serial(Onehot, Main)
-    else:
-        return Main
-
-
-def small_dense_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
-    Main = stax.serial(
-        MaskedDense(width, k=1),
-        Relu,
-        MaskedDense(width),
-        Relu,
-        MaskedDense(width),
-        Relu,
-        MaskedDense(4),
+        MaskedConv1d(4, (FilterSize,), net_dtype=net_dtype),
+        Real_to_complex,
     )
     if one_hot:
         return stax.serial(Onehot, Main)
