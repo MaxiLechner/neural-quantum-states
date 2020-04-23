@@ -3,6 +3,7 @@ import jax.numpy as np
 from jax.experimental import stax
 from jax.experimental.stax import (
     Relu,
+    BatchNorm,
     FanOut,
     FanInSum,
     Identity,
@@ -130,6 +131,29 @@ def small_resnet_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
         return Main
 
 
+def small_resnetbn_1d(width, FilterSize, axis, one_hot=True, net_dtype=np.float32):
+    Main = stax.serial(
+        MaskedConv1d(width, (FilterSize,), True, net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        resnet_block_1d(width, (FilterSize,), net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        MaskedConv1d(4, (FilterSize,), net_dtype=net_dtype),
+        Real_to_complex,
+    )
+    if one_hot:
+        return stax.serial(Onehot, Main)
+    else:
+        return Main
+
+
 def small_net_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
     Main = stax.serial(
         MaskedConv1d(width, (FilterSize,), True, net_dtype=net_dtype),
@@ -137,6 +161,26 @@ def small_net_1d(width, FilterSize, one_hot=True, net_dtype=np.float32):
         MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
         Relu,
         MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
+        Relu,
+        MaskedConv1d(4, (FilterSize,), net_dtype=net_dtype),
+        Real_to_complex,
+    )
+    if one_hot:
+        return stax.serial(Onehot, Main)
+    else:
+        return Main
+
+
+def small_netbn_1d(width, FilterSize, axis, one_hot=True, net_dtype=np.float32):
+    Main = stax.serial(
+        MaskedConv1d(width, (FilterSize,), True, net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
+        BatchNorm(axis=axis),
+        Relu,
+        MaskedConv1d(width, (FilterSize,), net_dtype=net_dtype),
+        BatchNorm(axis=axis),
         Relu,
         MaskedConv1d(4, (FilterSize,), net_dtype=net_dtype),
         Real_to_complex,

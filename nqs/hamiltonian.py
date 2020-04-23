@@ -5,7 +5,7 @@ from jax import jit
 from jax.lax import fori_loop
 from jax.experimental import optimizers
 
-from .network import small_net_1d, small_resnet_1d
+from .network import small_net_1d, small_netbn_1d, small_resnet_1d, small_resnetbn_1d
 from .wavefunction import log_amplitude_init
 from .sampler import sample_init
 from .optim import loss_init, step_init
@@ -40,7 +40,12 @@ def initialize_model_1d(
             https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
         )
 
-    net_dispatch = {"small_net_1d": small_net_1d, "small_resnet_1d": small_resnet_1d}
+    net_dispatch = {
+        "small_net_1d": small_net_1d,
+        "small_netbn_1d": small_netbn_1d,
+        "small_resnet_1d": small_resnet_1d,
+        "small_resnetbn_1d": small_resnetbn_1d,
+    }
 
     energy_dispatch = {
         "ising1d": energy_ising_1d_init,
