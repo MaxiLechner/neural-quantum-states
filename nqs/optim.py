@@ -1,5 +1,8 @@
 import jax.numpy as np
-from jax import jit, grad
+from jax import jit, grad, jvp
+import jax
+
+from functools import partial
 
 
 def loss_init(log_amplitude):
@@ -11,6 +14,30 @@ def loss_init(log_amplitude):
         return 2 * np.mean(np.real(energy * lpsi))
 
     return loss
+
+
+@partial(jit, static_argnums=(0,))
+def hvp(loss, params, batch, v):
+    """Computes the hessian vector product Hv.
+
+  This implementation uses forward-over-reverse mode for computing the hvp.
+
+  Args:
+    loss: function computing the loss with signature
+      loss(params, batch).
+    params: pytree for the parameters of the model.
+    batch:  A batch of data. Any format is fine as long as it is a valid input
+      to loss(params, batch).
+    v: pytree of the same structure as params.
+
+  Returns:
+    hvp: array of shape [num_params] equal to Hv where H is the hessian.
+  """
+
+    def loss_fn(x):
+        return loss(x, batch)
+
+    return jvp(grad(loss_fn), [params], [v])[1]
 
 
 def step_init(
@@ -25,6 +52,10 @@ def step_init(
     get_params,
 ):
     @jit
+    def loss(x, y):
+        return -np.mean(np.real(log_amplitude(x, y)))
+
+    @jit
     def step(i, opt_state, key):
         params = get_params(opt_state)
         key, config = sample_func(params, init_config, key)
@@ -32,7 +63,9 @@ def step_init(
         grad_loss = grad(loss_func)(params, config, energy)
         var = energy_var(energy)
         mag = magnetization(config)
+        precond = partial(hvp, loss, params, config)
+        grad_loss = jax.scipy.sparse.linalg.cg(precond, grad_loss)[0]
         update = opt_update(i, grad_loss, opt_state)
-        return update, key, energy.real.mean(), mag, var
+        return update, key, energy, mag, var
 
     return step
