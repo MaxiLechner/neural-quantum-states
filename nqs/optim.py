@@ -37,13 +37,18 @@ def hvp(loss, params, batch, v):
     def loss_fn(x):
         return loss(x, batch)
 
-    return jvp(grad(loss_fn), [params], [v])[1]
+    f = grad(loss_fn)
+    _, f_jvp = jax.linearize(f, params)
+    out_tangent = f_jvp(v)
+    return out_tangent
+
+    # return jvp(grad(loss_fn), (params,), (v,))[1]
 
 
 def step_init(
-    energy_func,
-    sample_func,
-    loss_func,
+    energy_fn,
+    sample_fn,
+    loss_fn,
     energy_var,
     magnetization,
     log_amplitude,
@@ -58,13 +63,13 @@ def step_init(
     @jit
     def step(i, opt_state, key):
         params = get_params(opt_state)
-        key, config = sample_func(params, init_config, key)
-        energy = energy_func(params, config)
-        grad_loss = grad(loss_func)(params, config, energy)
+        key, config = sample_fn(params, init_config, key)
+        energy = energy_fn(params, config)
+        grad_loss = grad(loss_fn)(params, config, energy)
         var = energy_var(energy)
         mag = magnetization(config)
-        precond = partial(hvp, loss, params, config)
-        grad_loss = jax.scipy.sparse.linalg.cg(precond, grad_loss)[0]
+        # fisher = partial(hvp, loss, params, config)
+        # grad_loss = jax.scipy.sparse.linalg.cg(fisher, grad_loss)[0]
         update = opt_update(i, grad_loss, opt_state)
         return update, key, energy, mag, var
 
