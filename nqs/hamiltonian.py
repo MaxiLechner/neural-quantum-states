@@ -123,9 +123,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
             """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
             sign flipped. As logpsi returns the real and the imaginary part seperately,
             we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(shape)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            flipped = config * flip_i
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
             logpsi_flipped = log_amplitude(net_params, flipped)
             return np.exp(logpsi_flipped - logpsi)
 
@@ -162,10 +160,8 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
             have their sign flipped. As logpsi returns the real and the imaginary part
             seperately, we therefor need to recombine them into a complex valued array"""
-            flip_i = np.ones(shape)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, i], -1)
-            flip_i = jax.ops.index_update(flip_i, jax.ops.index[:, (i + 1) % N], -1)
-            flipped = config * flip_i
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
+            flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + 1) % N], -1)
             logpsi_flipped = log_amplitude(net_params, flipped)
             return np.exp(logpsi_flipped - logpsi)
 
