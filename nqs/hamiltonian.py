@@ -1,14 +1,14 @@
 import jax
-from jax import random, config
+from jax import jit, random, config
 import jax.numpy as np
-from jax import jit
 from jax.lax import fori_loop
-from jax.experimental import optimizers
 
-from .network import small_net_1d, small_netbn_1d, small_resnet_1d, small_resnetbn_1d
-from .wavefunction import log_amplitude_init
+import flax
+
+from .net import conv, lstm
 from .sampler import sample_init
-from .optim import loss_init, step_init
+from .optim import step_init
+from .wavefunction import log_amplitude
 
 import matplotlib.pyplot as plt
 
@@ -22,6 +22,8 @@ def initialize_model_1d(
     lr,
     J,
     batch_size,
+    hidden_size,
+    depth,
     pbc,
     network,
     x64=False,
@@ -40,20 +42,27 @@ def initialize_model_1d(
             https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
         )
 
-    net_dispatch = {
-        "small_net_1d": small_net_1d,
-        "small_netbn_1d": small_netbn_1d,
-        "small_resnet_1d": small_resnet_1d,
-        "small_resnetbn_1d": small_resnetbn_1d,
-    }
+    net_dispatch = {"conv": conv, "lstm": lstm}
 
     energy_dispatch = {
         "ising1d": energy_ising_1d_init,
         "heisenberg1d": energy_heisenberg_1d_init,
     }
 
+    key = random.PRNGKey(seed)
+    key, subkey, carry_key = random.split(key, 3)
+
     try:
         net = net_dispatch[network]
+        if network == "conv":
+            module = net.partial(
+                depth=depth, features=width, kernel_size=filter_size, use_one_hot=True
+            )
+        elif network == "lstm":
+            module = net.partial(
+                hidden_size=hidden_size, key=carry_key, depth=depth, use_one_hot=one_hot
+            )
+
     except KeyError:
         print(
             f"{network} is not a valid network. You can choose between small_net_1d and small_resnet_1d."
@@ -68,63 +77,32 @@ def initialize_model_1d(
         )
         raise
 
-    num_classes = 2
-    model = net(width, filter_size, one_hot=one_hot, net_dtype=f_dtype)
-    net_init, net_apply = model
-    key = random.PRNGKey(seed)
-    key, subkey = random.split(key)
-    net_apply = jit(net_apply)
     if one_hot:
-        in_shape = (-1, num_spins, num_classes)
-        _, net_params = net_init(subkey, in_shape)
+        in_shape = (batch_size, num_spins, 2)
     else:
-        in_shape = (-1, num_spins, 1)
-        _, net_params = net_init(subkey, in_shape)
+        in_shape = (batch_size, num_spins, 1)
 
-    sample = sample_init(net_apply)
-    logpsi = log_amplitude_init(net_apply)
-    energy = energy_init(logpsi, J, pbc, c_dtype)
-    loss = loss_init(logpsi)
-    opt_init, opt_update, get_params = optimizers.adam(lr)
-    opt_state = opt_init(net_params)
+    _, params = module.init_by_shape(subkey, [in_shape])
+    model = flax.nn.Model(module, params)
+
     init_config = np.zeros((batch_size, num_spins, 1), dtype=f_dtype)
-    step = step_init(
-        energy,
-        sample,
-        loss,
-        energy_var,
-        magnetization,
-        logpsi,
-        init_config,
-        opt_update,
-        get_params,
-    )
-    return (
-        step,
-        opt_state,
-        key,
-        get_params,
-        energy,
-        sample,
-        loss,
-        init_config,
-        opt_update,
-        logpsi,
-        net_apply,
-        net_init,
-    )
+    sample_fn = sample_init(init_config)
+    energy_fn = energy_init(J, pbc, c_dtype)
+    optimizer = flax.optim.Adam(learning_rate=lr).create(model)
+    step = step_init(energy_fn, sample_fn, energy_var, magnetization)
+    return (step, key, energy_fn, sample_fn, init_config, optimizer)
 
 
-def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
+def energy_ising_1d_init(J, pbc, c_dtype):
     @jit
-    def energy(net_params, config):
+    def energy(model, config):
         @jit
         def amplitude_diff(config, i):
             """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
             sign flipped. As logpsi returns the real and the imaginary part seperately,
             we therefor need to recombine them into a complex valued array"""
             flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
-            logpsi_flipped = log_amplitude(net_params, flipped)
+            logpsi_flipped = log_amplitude(model, flipped)
             return np.exp(logpsi_flipped - logpsi)
 
         @jit
@@ -133,7 +111,7 @@ def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
             E -= J * (amplitude_diff(s, i) + s[:, i] * s[:, (i + 1) % N])
             return E, s
 
-        logpsi = log_amplitude(net_params, config)
+        logpsi = log_amplitude(model, config)
         logpsi = logpsi.astype(c_dtype)
 
         start = 0
@@ -152,9 +130,9 @@ def energy_ising_1d_init(log_amplitude, J, pbc, c_dtype):
     return energy
 
 
-def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
+def energy_heisenberg_1d_init(J, pbc, c_dtype):
     @jit
-    def energy(net_params, config):
+    def energy(model, config):
         @jit
         def amplitude_diff(config, i):
             """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
@@ -162,7 +140,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
             seperately, we therefor need to recombine them into a complex valued array"""
             flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
             flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + 1) % N], -1)
-            logpsi_flipped = log_amplitude(net_params, flipped)
+            logpsi_flipped = log_amplitude(model, flipped)
             return np.exp(logpsi_flipped - logpsi)
 
         @jit
@@ -177,7 +155,7 @@ def energy_heisenberg_1d_init(log_amplitude, J, pbc, c_dtype):
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask = config * np.roll(config, -1, axis=1) - 1
-        logpsi = log_amplitude(net_params, config)
+        logpsi = log_amplitude(model, config)
 
         start = 0
         shape = config.shape

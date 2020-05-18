@@ -1,38 +1,27 @@
 import jax.numpy as np
 from jax import jit, grad
 
+from .wavefunction import log_amplitude
 
-def loss_init(log_amplitude):
+
+@jit
+def loss(model, config, energy):
+    energy -= np.mean(energy)
+    energy = energy.conj()
+    lpsi = log_amplitude(model, config)
+    return 2 * np.mean(np.real(energy * lpsi))
+
+
+def step_init(energy_fn, sample_fn, energy_var, magnetization):
     @jit
-    def loss(net_params, config, energy):
-        energy -= np.mean(energy)
-        energy = energy.conj()
-        lpsi = log_amplitude(net_params, config)
-        return 2 * np.mean(np.real(energy * lpsi))
-
-    return loss
-
-
-def step_init(
-    energy_fn,
-    sample_fn,
-    loss_fn,
-    energy_var,
-    magnetization,
-    log_amplitude,
-    init_config,
-    opt_update,
-    get_params,
-):
-    @jit
-    def step(i, opt_state, key):
-        params = get_params(opt_state)
-        key, config = sample_fn(params, init_config, key)
-        energy = energy_fn(params, config)
-        grad_loss = grad(loss_fn)(params, config, energy)
+    def step(optimizer, key):
+        model = optimizer.target
+        key, config = sample_fn(model, key)
+        energy = energy_fn(model, config)
+        grad_loss = grad(loss)(model, config, energy)
         var = energy_var(energy)
         mag = magnetization(config)
-        update = opt_update(i, grad_loss, opt_state)
-        return update, key, energy, mag, var
+        opt_update = optimizer.apply_gradient(grad_loss)
+        return opt_update, key, energy, mag, var
 
     return step
