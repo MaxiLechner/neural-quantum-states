@@ -105,8 +105,7 @@ def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
         @jit
         def amplitude_diff(config, i):
             """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
-            sign flipped. As logpsi returns the real and the imaginary part seperately,
-            we therefor need to recombine them into a complex valued array"""
+            sign flipped."""
             flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
             logpsi_flipped = log_amplitude(model, flipped)
             return np.exp(logpsi_flipped - logpsi)
@@ -121,8 +120,7 @@ def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
         logpsi = logpsi.astype(c_dtype)
 
         start = 0
-        shape = config.shape
-        B, N, _ = shape
+        B, N, _ = config.shape
         # Can't use if statements in jitted code, need to use lax primitive instead.
         end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
         start_val = np.zeros(B, dtype=c_dtype)[..., None]
@@ -142,8 +140,7 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
         @jit
         def amplitude_diff(config, i):
             """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
-            have their sign flipped. As logpsi returns the real and the imaginary part
-            seperately, we therefor need to recombine them into a complex valued array"""
+            have their sign flipped."""
             flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
             flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + 1) % N], -1)
             logpsi_flipped = log_amplitude(model, flipped)
@@ -164,8 +161,7 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
         logpsi = log_amplitude(model, config)
 
         start = 0
-        shape = config.shape
-        B, N, _ = shape
+        B, N, _ = config.shape
         # Can't use if statements in jitted code, need to use lax primitive instead.
         end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
 
@@ -183,8 +179,7 @@ def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
         @jit
         def amplitude_diff(config, i, k):
             """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+k
-            have their sign flipped. As logpsi returns the real and the imaginary part
-            seperately, we therefor need to recombine them into a complex valued array"""
+            have their sign flipped."""
             flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
             flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + k) % N], -1)
             logpsi_flipped = log_amplitude(model, flipped)
@@ -212,12 +207,11 @@ def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
 
         # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
         mask1 = config * np.roll(config, -1, axis=1) - 1
-        mask2 = config * np.roll(config, -2, axis=1) - 1
+        mask2 = 1 - config * np.roll(config, -2, axis=1)
         logpsi = log_amplitude(model, config)
 
         start = 0
-        shape = config.shape
-        B, N, _ = shape
+        B, N, _ = config.shape
         # Can't use if statements in jitted code, need to use lax primitive instead.
         end1 = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
         end2 = jax.lax.cond(pbc, N, lambda x: x, N - 2, lambda x: x)
@@ -245,11 +239,27 @@ def magnetization(config):
 @jit
 def SzSz(config, i, j):
     def mul(i, j):
-        return np.mean(config[:, i] * config[:, j])
+        return np.mean(0.25 * config[:, i] * config[:, j])
 
     mul = vmap(mul, in_axes=(0, None))
     mul = vmap(mul, in_axes=(None, 0))
     return mul(np.array(i), np.array(j))
+
+
+@jit
+def SxSx(model, config, i, j):
+    @jit
+    def amplitude_diff(i, j):
+        """compute apmplitude ratio of logpsi and logpsi_flipped, where i and j
+        have their sign flipped."""
+        flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, j]], -1)
+        logpsi_flipped = log_amplitude(model, flipped)
+        return np.mean(np.real(0.25 * np.exp(logpsi_flipped - logpsi)))
+
+    logpsi = log_amplitude(model, config)
+    amplitude_diff = vmap(amplitude_diff, in_axes=(0, None))
+    amplitude_diff = vmap(amplitude_diff, in_axes=(None, 0))
+    return amplitude_diff(np.array(i), np.array(j))
 
 
 def callback(params, i, ax):
