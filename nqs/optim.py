@@ -12,11 +12,11 @@ def loss(model, config, energy):
     return 2 * np.mean(np.real(energy * lpsi))
 
 
-def step_init(energy_fn, sample_fn, energy_var, magnetization):
+def step_init(energy_fn, energy_var, magnetization):
     @jit
     def step(optimizer, key):
         model = optimizer.target
-        key, config = sample_fn(model, key)
+        key, config = model.sample(key=key)
         energy = energy_fn(model, config)
         grad_loss = grad(loss)(model, config, energy)
         var = energy_var(energy)
