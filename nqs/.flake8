@@ -1,0 +1,6 @@
+[flake8]
+ignore =
+    # E203: whitespace before ':' (black fails to be PEP8 compliant)
+    E203
+    # W503: line break before binary operator
+    W503
