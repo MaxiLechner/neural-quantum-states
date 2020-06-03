@@ -1,5 +1,6 @@
+import jax
 import jax.numpy as jnp
-from jax import lax, random
+from jax import lax, random, jit
 
 from flax import nn, jax_utils
 from flax.nn import base, initializers
@@ -25,7 +26,16 @@ def one_hot(x, num_classes=2, net_dtype=jnp.float32):
 
 def real_to_complex(x):
     """Turn real valued input array into complex valued output array."""
-    return x[:, :, [0, 2]] * jnp.exp(x[:, :, [1, 3]] * 1j)  # shape (N,M,4) -> (N,M,2)
+    return x[..., [0, 2]] * jnp.exp(x[..., [1, 3]] * 1j)  # shape (N,M,4) -> (N,M,2)
+
+
+@jit
+def prob(x):
+    x = jnp.exp(x)
+    norm = jnp.linalg.norm(x, 2, axis=-1, keepdims=True)
+    x = x / norm
+    probs = jnp.square(jnp.abs(x))
+    return probs
 
 
 class MaskedConv1d(base.Module):
@@ -95,41 +105,103 @@ class MaskedConv1d(base.Module):
         return y
 
 
-class LSTM(nn.Module):
+class MultiLSTMCell(nn.Module):
     """LSTM encoder. Turns a sequence of vectors into a vector."""
 
-    def apply(self, inputs, key, hidden_size=24):
-        # inputs.shape = <float32>[batch_size, seq_length, emb_size].
-        batch_size = inputs.shape[0]
-        carry = nn.LSTMCell.initialize_carry(key, (batch_size,), hidden_size)
-        _, outputs = jax_utils.scan_in_dim(
-            nn.LSTMCell.partial(name="lstm_cell"), carry, inputs, axis=1
+    def apply(self, carry, x, depth, use_one_hot):
+        carry_list = []
+        if use_one_hot:
+            x = one_hot(x)
+        for i in range(depth):
+            c, x = nn.LSTMCell(carry[i], x)  # pylint: disable=unpacking-non-sequence
+            x = nn.relu(x)
+            carry_list.append(c)
+        x = nn.Dense(x, 4)
+        x = real_to_complex(x)
+        return carry_list, x
+
+
+class lstm(nn.Module):
+    def apply(self, x, init_config, init_key, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, init_key, depth, hidden_size, use_one_hot)
+        _, x = jax_utils.scan_in_dim(cell, carry, x, axis=1)
+        return x
+
+    def _init(self, init_config, init_key, depth, hidden_size, use_one_hot):
+        batch_size = init_config.shape[0]
+        carry = nn.LSTMCell.initialize_carry(init_key, (batch_size,), hidden_size)
+        carry_list = [carry for i in range(depth)]
+        cell = MultiLSTMCell.partial(depth=depth, use_one_hot=use_one_hot)
+        return carry_list, cell
+
+    @nn.module_method
+    def sample(self, init_config, init_key, key, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, init_key, depth, hidden_size, use_one_hot)
+
+        @jit
+        def body(i, loop_carry):
+            key, carry, config = loop_carry
+            carry, out = cell(carry, config[:, i, :])
+            probs = prob(out)
+            key, subkey = random.split(key)
+            sample = random.bernoulli(subkey, probs[..., 1]) * 2 - 1.0
+            sample = sample[..., jnp.newaxis]
+            config = jax.ops.index_update(config, jax.ops.index[:, i + 1], sample)
+            return key, carry, config
+
+        # need to increase dimension of init_config by one in order to sample a state of
+        # length N as config[:,i+1] needs to depend on config[:,i].
+        a, _, c = init_config.shape
+        w = jnp.zeros((a, 1, c))
+        init_config = jnp.hstack([w, init_config])
+        key, _, config = lax.fori_loop(
+            0, init_config.shape[1], body, (key, carry, init_config)
         )
-        return outputs
+        config = config[:, 1:, :]
+        return key, config
 
 
-@nn.module
-def lstm(x, key, depth, hidden_size=24, use_one_hot=True, dtype=jnp.float32):
-    keys = random.split(key, depth)
-    if use_one_hot:
-        x = one_hot(x)
-    for i in range(depth):
-        x = LSTM(x, keys[i], hidden_size=hidden_size)
+class Conv(nn.Module):
+    def apply(self, x, depth, features, kernel_size, use_one_hot):
+        if use_one_hot:
+            x = one_hot(x)
+        x = MaskedConv1d(x, features, (kernel_size,), is_first_layer=True)
         x = nn.relu(x)
-    x = nn.Dense(x, 4)
-    x = real_to_complex(x)
-    return x
+        for _ in range(depth - 2):
+            x = MaskedConv1d(x, features, (kernel_size,))
+            x = nn.relu(x)
+        x = MaskedConv1d(x, 4, (kernel_size,))
+        x = real_to_complex(x)
+        return x
 
 
-@nn.module
-def conv(x, depth, features, kernel_size, use_one_hot=True, dtype=jnp.float32):
-    if use_one_hot:
-        x = one_hot(x)
-    x = MaskedConv1d(x, features, (kernel_size,), dtype=dtype, is_first_layer=True)
-    x = nn.relu(x)
-    for _ in range(depth - 2):
-        x = MaskedConv1d(x, features, (kernel_size,), dtype=dtype)
-        x = nn.relu(x)
-    x = MaskedConv1d(x, 4, (kernel_size,), dtype=dtype)
-    x = real_to_complex(x)
-    return x
+class conv(nn.Module):
+    def apply(self, x, init_config, depth, features, kernel_size, use_one_hot):
+        conv = self._init(depth, features, kernel_size, use_one_hot)
+        return conv(x)
+
+    def _init(self, depth, features, kernel_size, use_one_hot):
+        return Conv.partial(
+            depth=depth,
+            features=features,
+            kernel_size=kernel_size,
+            use_one_hot=use_one_hot,
+        )
+
+    @nn.module_method
+    def sample(self, key, init_config, depth, features, kernel_size, use_one_hot):
+        model = self._init(depth, features, kernel_size, use_one_hot)
+
+        @jit
+        def body(i, loop_carry):
+            key, config = loop_carry
+            out = model(config)
+            probs = prob(out)
+            key, subkey = random.split(key)
+            sample = random.bernoulli(subkey, probs[:, i, 1]) * 2 - 1.0
+            sample = sample[..., jnp.newaxis]
+            config = jax.ops.index_update(config, jax.ops.index[:, i], sample)
+            return key, config
+
+        key, config = lax.fori_loop(0, init_config.shape[1], body, (key, init_config))
+        return key, config
