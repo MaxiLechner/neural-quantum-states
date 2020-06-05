@@ -1,1 +1,1 @@
-from nqs import hamiltonian, network, optim, sampler, wavefunction
+from nqs import hamiltonian, networks, optim, sampler, wavefunction
