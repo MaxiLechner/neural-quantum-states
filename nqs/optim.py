@@ -1,4 +1,4 @@
-import jax.numpy as np
+import jax.numpy as jnp
 from jax import jit, grad
 
 from .wavefunction import log_amplitude
@@ -6,10 +6,10 @@ from .wavefunction import log_amplitude
 
 @jit
 def loss(model, config, energy):
-    energy -= np.mean(energy)
+    energy -= jnp.mean(energy)
     energy = energy.conj()
     lpsi = log_amplitude(model, config)
-    return 2 * np.mean(np.real(energy * lpsi))
+    return 2 * jnp.mean(jnp.real(energy * lpsi))
 
 
 def step_init(energy_fn, learning_rate_fn, energy_var, magnetization):
