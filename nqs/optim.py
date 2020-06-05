@@ -12,7 +12,7 @@ def loss(model, config, energy):
     return 2 * np.mean(np.real(energy * lpsi))
 
 
-def step_init(energy_fn, energy_var, magnetization):
+def step_init(energy_fn, learning_rate_fn, energy_var, magnetization):
     @jit
     def step(optimizer, key):
         model = optimizer.target
@@ -21,7 +21,8 @@ def step_init(energy_fn, energy_var, magnetization):
         grad_loss = grad(loss)(model, config, energy)
         var = energy_var(energy)
         mag = magnetization(config)
-        opt_update = optimizer.apply_gradient(grad_loss)
-        return opt_update, key, energy, mag, var
+        lr = learning_rate_fn(optimizer.state.step)
+        opt_update = optimizer.apply_gradient(grad_loss, learning_rate=lr)
+        return opt_update, key, energy, mag, var, lr
 
     return step
