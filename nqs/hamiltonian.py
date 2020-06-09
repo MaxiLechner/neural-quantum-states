@@ -10,7 +10,6 @@ from .networks import conv, lstm
 from .optim import step_init
 from .wavefunction import log_amplitude
 
-import matplotlib.pyplot as plt
 from functools import partial
 
 
@@ -51,7 +50,9 @@ def initialize_model_1d(
         "ising1d": energy_ising_1d_init,
         "vising1d": energy_vmap_ising_1d_init,
         "heisenberg1d": energy_heisenberg_1d_init,
+        "vheisenberg1d": energy_vmap_heisenberg_1d_init,
         "J1J21d": energy_J1J2_1d_init,
+        "vJ1J21d": energy_vmap_J1J2_1d_init,
     }
 
     key = random.PRNGKey(seed)
@@ -85,7 +86,7 @@ def initialize_model_1d(
 
     try:
         energy_init = energy_dispatch[hamiltonian]
-        if hamiltonian == "J1J21d":
+        if hamiltonian == "J1J21d" or hamiltonian == "vJ1J21d":
             energy_dict = {"J1": J, "J2": J2, "pbc": pbc, "c_dtype": c_dtype}
         else:
             energy_dict = {"J": J, "pbc": pbc, "c_dtype": c_dtype}
@@ -180,10 +181,9 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
     def energy(model, config):
         @jit
         def amplitude_diff(config, i):
-            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+1
             have their sign flipped."""
-            flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
-            flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + 1) % N], -1)
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + 1) % N]], -1)
             logpsi_flipped = log_amplitude(model, flipped)
             return jnp.exp(logpsi_flipped - logpsi)
 
@@ -214,15 +214,49 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
     return energy
 
 
+def energy_vmap_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
+    @jit
+    def energy(model, config):
+        @jit
+        def amplitude_diff(config, i):
+            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+1
+            have their sign flipped."""
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + 1) % N]], -1)
+            logpsi_flipped = log_amplitude(model, flipped)
+            return jnp.exp(logpsi_flipped - logpsi)
+
+        vmap_amplitude_diff = vmap(partial(amplitude_diff, config), out_axes=1)
+
+        logpsi = log_amplitude(model, config)
+
+        _, N, _ = config.shape
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
+
+        idx = jnp.arange(end)
+        # sz*sz term
+        nn = config[:, :end] * jnp.roll(config, -1, axis=1)[:, :end]
+        # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
+        mask = nn - 1
+
+        E0 = jnp.sum(nn, axis=1)
+        E1 = jnp.sum(mask * vmap_amplitude_diff(idx), axis=1)
+
+        E = 0.25 * J * (E0 + E1)
+
+        return E
+
+    return energy
+
+
 def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
         def amplitude_diff(config, i, k):
-            """compute apmplitude ratio of logpsi and logpsi_flipped, where i and i+k
+            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+k
             have their sign flipped."""
-            flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
-            flipped = jax.ops.index_mul(flipped, jax.ops.index[:, (i + k) % N], -1)
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + k) % N]], -1)
             logpsi_flipped = log_amplitude(model, flipped)
             return jnp.exp(logpsi_flipped - logpsi)
 
@@ -266,6 +300,48 @@ def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
     return energy
 
 
+def energy_vmap_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
+    @jit
+    def energy(model, config):
+        @jit
+        def amplitude_diff(i, k):
+            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+k
+            have their sign flipped."""
+            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + k) % N]], -1)
+            logpsi_flipped = log_amplitude(model, flipped)
+            return jnp.exp(logpsi_flipped - logpsi)
+
+        amplitude_diff = vmap(amplitude_diff, in_axes=(0, None), out_axes=1)
+
+        logpsi = log_amplitude(model, config)
+
+        _, N, _ = config.shape
+        # Can't use if statements in jitted code, need to use lax primitive instead.
+        end1 = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
+        end2 = jax.lax.cond(pbc, N, lambda x: x, N - 2, lambda x: x)
+
+        idx1 = jnp.arange(end1)
+        idx2 = jnp.arange(end2)
+
+        # sz*sz term
+        nn1 = config[:, :end1] * jnp.roll(config, -1, axis=1)[:, :end1]
+        nn2 = config[:, :end2] * jnp.roll(config, -2, axis=1)[:, :end2]
+        # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
+        mask1 = nn1 - 1
+        mask2 = 1 - nn2
+
+        E0_J1 = jnp.sum(nn1, axis=1)
+        E0_J2 = jnp.sum(nn2, axis=1)
+        E1_J1 = jnp.sum(mask1 * amplitude_diff(idx1, 1), axis=1)
+        E1_J2 = jnp.sum(mask2 * amplitude_diff(idx2, 2), axis=1)
+
+        E_J1 = 0.25 * J1 * (E0_J1 + E1_J1)
+        E_J2 = 0.25 * J2 * (E0_J2 + E1_J2)
+        return E_J1 + E_J2
+
+    return energy
+
+
 @jit
 def energy_var(energy):
     return jnp.var(energy.real)
@@ -291,7 +367,7 @@ def SzSz(config, i, j):
 def SxSx(model, config, i, j):
     @jit
     def amplitude_diff(i, j):
-        """compute apmplitude ratio of logpsi and logpsi_flipped, where i and j
+        """compute amplitude ratio of logpsi and logpsi_flipped, where i and j
         have their sign flipped."""
         flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, j]], -1)
         logpsi_flipped = log_amplitude(model, flipped)
@@ -301,21 +377,3 @@ def SxSx(model, config, i, j):
     amplitude_diff = vmap(amplitude_diff, in_axes=(0, None))
     amplitude_diff = vmap(amplitude_diff, in_axes=(None, 0))
     return amplitude_diff(jnp.array(i), jnp.array(j))
-
-
-def callback(params, i, ax):
-    E, mag, Time, epochs, gs_energy = params
-    epoch_mod = 100
-    if i > 0 and i % epoch_mod == 0 or i == epochs - 1:
-        print(
-            "{} epochs took {:.4f} seconds.".format(
-                epoch_mod, Time[i] - Time[i - epoch_mod]
-            )
-        )
-        plt.cla()
-        plt.axhline(gs_energy, label="Exact Energy", color="r")
-        ax.plot(E, label="Energy")
-        ax.plot(mag, label="Magnetization")
-        plt.legend()
-        plt.draw()
-        plt.pause(1.0 / 60.0)
