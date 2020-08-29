@@ -2,7 +2,6 @@ import jax
 from jax import vmap, jit, random, config
 import jax.numpy as jnp
 from jax.lax import fori_loop
-from jax.experimental.optimizers import make_schedule
 
 import flax
 
@@ -20,7 +19,6 @@ def initialize_model_1d(
     seed,
     num_spins,
     lr,
-    learning_rate_fn,
     J,
     J2,
     batch_size,
@@ -105,9 +103,8 @@ def initialize_model_1d(
     model = flax.nn.Model(module, params)
 
     energy_fn = energy_init(**energy_dict)
-    optimizer = flax.optim.Adam(learning_rate=lr).create(model)
-    learning_rate_fn = make_schedule(learning_rate_fn)
-    step = step_init(energy_fn, learning_rate_fn, energy_var, magnetization)
+    optimizer = flax.optim.LAMB(learning_rate=lr).create(model)
+    step = step_init(energy_fn, energy_var, magnetization)
     return (step, key, energy_fn, init_config, optimizer)
 
 
