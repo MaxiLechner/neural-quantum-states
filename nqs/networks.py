@@ -122,21 +122,23 @@ class MultiLSTMCell(nn.Module):
 
 
 class lstm(nn.Module):
-    def apply(self, x, init_config, init_key, depth, hidden_size, use_one_hot):
-        carry, cell = self._init(init_config, init_key, depth, hidden_size, use_one_hot)
+    def apply(self, x, init_config, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, depth, hidden_size, use_one_hot)
         _, x = jax_utils.scan_in_dim(cell, carry, x, axis=1)
         return x
 
-    def _init(self, init_config, init_key, depth, hidden_size, use_one_hot):
+    def _init(self, init_config, depth, hidden_size, use_one_hot):
         batch_size = init_config.shape[0]
+        # use dummy key as lstm is always initialized with all zeros
+        init_key = random.PRNGKey(0)
         carry = nn.LSTMCell.initialize_carry(init_key, (batch_size,), hidden_size)
         carry_list = [carry for i in range(depth)]
         cell = MultiLSTMCell.partial(depth=depth, use_one_hot=use_one_hot)
         return carry_list, cell
 
     @nn.module_method
-    def sample(self, init_config, init_key, key, depth, hidden_size, use_one_hot):
-        carry, cell = self._init(init_config, init_key, depth, hidden_size, use_one_hot)
+    def sample(self, init_config, key, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, depth, hidden_size, use_one_hot)
 
         @jit
         def body(i, loop_carry):

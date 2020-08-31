@@ -54,7 +54,7 @@ def initialize_model_1d(
     }
 
     key = random.PRNGKey(seed)
-    key, subkey, init_key = random.split(key, 3)
+    key, subkey = random.split(key, 2)
     init_config = jnp.zeros((batch_size, num_spins, 1), dtype=f_dtype)
 
     try:
@@ -70,7 +70,6 @@ def initialize_model_1d(
         elif network == "lstm":
             module = net.partial(
                 hidden_size=hidden_size,
-                init_key=init_key,
                 depth=depth,
                 use_one_hot=one_hot,
                 init_config=init_config,
