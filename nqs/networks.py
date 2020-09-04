@@ -24,9 +24,9 @@ def one_hot(x, num_classes=2, net_dtype=jnp.float32):
     return jnp.array(x == jnp.arange(num_classes, dtype=x.dtype), dtype=net_dtype)
 
 
-def real_to_complex(x):
-    """Turn real valued input array into complex valued output array."""
-    return x[..., [0, 2]] * jnp.exp(x[..., [1, 3]] * 1j)  # shape (N,M,4) -> (N,M,2)
+# def real_to_complex(x):
+#     """Turn real valued input array into complex valued output array."""
+#     return x[..., [0, 2]] * jnp.exp(x[..., [1, 3]] * 1j)  # shape (N,M,4) -> (N,M,2)
 
 
 @jit
@@ -105,6 +105,21 @@ class MaskedConv1d(base.Module):
         return y
 
 
+class real_to_complex(nn.Module):
+    """Turn real valued input array into complex valued output array."""
+
+    def apply(self, x):
+        real = nn.Dense(x, 10)
+        real = nn.relu(real)
+        real = nn.Dense(real, 2)
+
+        imag = nn.Dense(x, 10)
+        imag = nn.relu(imag)
+        imag = nn.Dense(imag, 2)
+        imag = jnp.pi * nn.soft_sign(imag)
+        return real * jnp.exp(1j * imag)
+
+
 class MultiLSTMCell(nn.Module):
     """LSTM encoder. Turns a sequence of vectors into a vector."""
 
@@ -116,7 +131,7 @@ class MultiLSTMCell(nn.Module):
             c, x = nn.LSTMCell(carry[i], x)  # pylint: disable=unpacking-non-sequence
             x = nn.relu(x)
             carry_list.append(c)
-        x = nn.Dense(x, 4)
+        # x = nn.Dense(x, 4)
         x = real_to_complex(x)
         return carry_list, x
 
