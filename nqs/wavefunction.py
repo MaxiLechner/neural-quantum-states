@@ -8,13 +8,7 @@ from nqs.networks import one_hot
 def log_amplitude(model, config):
     """compute logpsi for a batch of samples. As the network returns
     the amplitude for both up and down states we need to pick the
-    right amplitude by indexing according to the samples"""
-
-    def index_func(x, y, i):
-        xi = x[i]  # shape: (N,2)
-        yi = y[i]  # shape: (N)
-        arange = jnp.arange(xi.shape[0])
-        return xi[arange, yi]
+    right amplitude by indexing according to the input configuration"""
 
     out = model(config)
     exp = jnp.exp(out)
