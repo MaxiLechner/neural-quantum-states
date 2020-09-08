@@ -1,7 +1,7 @@
 import jax.numpy as jnp
-from jax import jit, vmap
+from jax import jit
 
-from functools import partial
+from nqs.networks import one_hot
 
 
 @jit
@@ -20,12 +20,11 @@ def log_amplitude(model, config):
     exp = jnp.exp(out)
     norm = jnp.linalg.norm(exp, 2, axis=2, keepdims=True) ** 2
 
-    # change representation from -1,1 to 0,1 for indexing purposes
-    B, _, _ = config.shape
-    idx = (config + 1) / 2
-    idx = idx.astype(jnp.int32).squeeze()
-    index_func = vmap(partial(index_func, out, idx))
-    vi = index_func(jnp.arange(B))[..., jnp.newaxis]
+    # pick out the amplitude corresponding to the input configuration
+    vi = out * one_hot(config)
+    vi = jnp.sum(vi, axis=-1)
+    vi = vi[..., jnp.newaxis]
+
     logpsi = vi - 0.5 * jnp.log(norm)
     logpsi = jnp.sum(logpsi, axis=1)
     return logpsi
