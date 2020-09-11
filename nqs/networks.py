@@ -21,6 +21,7 @@ def _conv_dimension_numbers(input_shape):
 
 def one_hot(x, num_classes=2, net_dtype=jnp.float32):
     """One-hot encodes the given indicies."""
+    x = (x + 1) / 2
     return jnp.array(x == jnp.arange(num_classes, dtype=x.dtype), dtype=net_dtype)
 
 
