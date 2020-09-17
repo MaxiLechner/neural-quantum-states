@@ -44,9 +44,9 @@ def initialize_model_1d(
     net_dispatch = {"conv": conv, "lstm": lstm}
 
     energy_dispatch = {
-        "ising1d": energy_ising_1d_init,
-        "heisenberg1d": energy_heisenberg_1d_init,
-        "J1J21d": energy_J1J2_1d_init,
+        "ising_1d": energy_ising_1d_init,
+        "heisenberg_1d": energy_heisenberg_1d_init,
+        "J1J2_1d": energy_J1J2_1d_init,
     }
 
     key = random.PRNGKey(seed)
