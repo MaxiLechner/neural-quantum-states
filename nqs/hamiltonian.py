@@ -1,7 +1,6 @@
 import jax
 from jax import vmap, jit, random, config
 import jax.numpy as jnp
-from jax.lax import fori_loop
 
 import flax
 
@@ -46,11 +45,8 @@ def initialize_model_1d(
 
     energy_dispatch = {
         "ising1d": energy_ising_1d_init,
-        "vising1d": energy_vmap_ising_1d_init,
         "heisenberg1d": energy_heisenberg_1d_init,
-        "vheisenberg1d": energy_vmap_heisenberg_1d_init,
         "J1J21d": energy_J1J2_1d_init,
-        "vJ1J21d": energy_vmap_J1J2_1d_init,
     }
 
     key = random.PRNGKey(seed)
@@ -118,41 +114,6 @@ def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
             logpsi_flipped = log_amplitude(model, flipped)
             return jnp.exp(logpsi_flipped - logpsi)
 
-        @jit
-        def body_fun(i, loop_carry):
-            E, s = loop_carry
-            E -= J * (amplitude_diff(s, i) + s[:, i] * s[:, (i + 1) % N])
-            return E, s
-
-        logpsi = log_amplitude(model, config)
-        logpsi = logpsi.astype(c_dtype)
-
-        B, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
-        start = 0
-        start_val = jnp.zeros(B, dtype=c_dtype)[..., None]
-
-        E, _ = fori_loop(start, end, body_fun, (start_val, config))
-        E = jax.lax.cond(
-            pbc, E, lambda x: x, E, lambda x: x - amplitude_diff(config, -1)
-        )
-        return E
-
-    return energy
-
-
-def energy_vmap_ising_1d_init(J=None, pbc=None, c_dtype=None):
-    @jit
-    def energy(model, config):
-        @jit
-        def amplitude_diff(config, i):
-            """Compute amplitude ratio of logpsi and logpsi_flipped, where spin i has its
-            sign flipped."""
-            flipped = jax.ops.index_mul(config, jax.ops.index[:, i], -1)
-            logpsi_flipped = log_amplitude(model, flipped)
-            return jnp.exp(logpsi_flipped - logpsi)
-
         vmap_amplitude_diff = vmap(partial(amplitude_diff, config), out_axes=1)
 
         logpsi = log_amplitude(model, config)
@@ -173,44 +134,6 @@ def energy_vmap_ising_1d_init(J=None, pbc=None, c_dtype=None):
 
 
 def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
-    @jit
-    def energy(model, config):
-        @jit
-        def amplitude_diff(config, i):
-            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+1
-            have their sign flipped."""
-            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + 1) % N]], -1)
-            logpsi_flipped = log_amplitude(model, flipped)
-            return jnp.exp(logpsi_flipped - logpsi)
-
-        @jit
-        def body_fun(i, loop_carry):
-            E, m, s = loop_carry
-            E += (
-                J
-                * 0.25
-                * (m[:, i] * amplitude_diff(s, i) + s[:, i] * s[:, (i + 1) % N])
-            )
-            return E, m, s
-
-        # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
-        mask = config * jnp.roll(config, -1, axis=1) - 1
-        logpsi = log_amplitude(model, config)
-
-        start = 0
-        B, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
-
-        start_val = jnp.zeros(B, dtype=c_dtype)[..., None]
-
-        E, _, _ = fori_loop(start, end, body_fun, (start_val, mask, config))
-        return E
-
-    return energy
-
-
-def energy_vmap_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
@@ -246,57 +169,6 @@ def energy_vmap_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
 
 
 def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
-    @jit
-    def energy(model, config):
-        @jit
-        def amplitude_diff(config, i, k):
-            """compute amplitude ratio of logpsi and logpsi_flipped, where i and i+k
-            have their sign flipped."""
-            flipped = jax.ops.index_mul(config, jax.ops.index[:, [i, (i + k) % N]], -1)
-            logpsi_flipped = log_amplitude(model, flipped)
-            return jnp.exp(logpsi_flipped - logpsi)
-
-        @jit
-        def body_fun1(i, loop_carry):
-            E, m, s = loop_carry
-            E += (
-                J1
-                * 0.25
-                * (m[:, i] * amplitude_diff(s, i, 1) + s[:, i] * s[:, (i + 1) % N])
-            )
-            return E, m, s
-
-        @jit
-        def body_fun2(i, loop_carry):
-            E, m, s = loop_carry
-            E += (
-                J2
-                * 0.25
-                * (m[:, i] * amplitude_diff(s, i, 2) + s[:, i] * s[:, (i + 2) % N])
-            )
-            return E, m, s
-
-        # sx*sx + sy*sy gives a contribution iff x[i]!=x[i+1]
-        mask1 = config * jnp.roll(config, -1, axis=1) - 1
-        mask2 = 1 - config * jnp.roll(config, -2, axis=1)
-        logpsi = log_amplitude(model, config)
-
-        start = 0
-        B, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end1 = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
-        end2 = jax.lax.cond(pbc, N, lambda x: x, N - 2, lambda x: x)
-
-        start_val = jnp.zeros(B, dtype=c_dtype)[..., None]
-
-        E1, _, _ = fori_loop(start, end1, body_fun1, (start_val, mask1, config))
-        E2, _, _ = fori_loop(start, end2, body_fun2, (start_val, mask2, config))
-        return E1 + E2
-
-    return energy
-
-
-def energy_vmap_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
