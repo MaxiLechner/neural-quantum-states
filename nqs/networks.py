@@ -129,10 +129,11 @@ class MultiLSTMCell(nn.Module):
         if use_one_hot:
             x = one_hot(x)
         for i in range(depth):
-            c, x = nn.LSTMCell(carry[i], x)  # pylint: disable=unpacking-non-sequence
+            c, x = nn.LSTMCell(
+                carry[i], x, bias_init=initializers.ones
+            )  # pylint: disable=unpacking-non-sequence
             x = nn.relu(x)
             carry_list.append(c)
-        # x = nn.Dense(x, 4)
         x = real_to_complex(x)
         return carry_list, x
 
