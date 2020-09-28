@@ -23,6 +23,6 @@ def step_init(energy_fn, energy_var, magnetization):
         mag = magnetization(config)
         grad_loss = tree_multimap(lambda g: jnp.clip(g, -1, 1), grad_loss)
         opt_update = optimizer.apply_gradient(grad_loss, learning_rate=lr)
-        return opt_update, key, energy, mag, var
+        return opt_update, key, energy.real.mean(), mag, var
 
     return step
