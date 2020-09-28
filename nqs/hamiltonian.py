@@ -79,7 +79,7 @@ def initialize_model_1d(
 
     try:
         energy_init = energy_dispatch[hamiltonian]
-        if hamiltonian == "J1J21d" or hamiltonian == "vJ1J21d":
+        if hamiltonian == "J1J2_1d":
             energy_dict = {"J1": J, "J2": J2, "pbc": pbc, "c_dtype": c_dtype}
         else:
             energy_dict = {"J": J, "pbc": pbc, "c_dtype": c_dtype}
