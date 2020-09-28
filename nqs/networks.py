@@ -110,12 +110,12 @@ class real_to_complex(nn.Module):
     """Turn real valued input array into complex valued output array."""
 
     def apply(self, x):
-        real = nn.Dense(x, 10)
-        real = nn.relu(real)
+        real = nn.Dense(x, 25)
+        real = jnp.sin(real)
         real = nn.Dense(real, 2)
 
-        imag = nn.Dense(x, 10)
-        imag = nn.relu(imag)
+        imag = nn.Dense(x, 25)
+        imag = jnp.sin(imag)
         imag = nn.Dense(imag, 2)
         imag = jnp.pi * nn.soft_sign(imag)
         return real * jnp.exp(1j * imag)
@@ -130,9 +130,9 @@ class MultiLSTMCell(nn.Module):
             x = one_hot(x)
         for i in range(depth):
             c, x = nn.LSTMCell(
-                carry[i], x, bias_init=initializers.ones
+                carry[i], x, bias_init=initializers.normal(stddev=1e-02)
             )  # pylint: disable=unpacking-non-sequence
-            x = nn.relu(x)
+            x = jnp.sin(x)
             carry_list.append(c)
         x = real_to_complex(x)
         return carry_list, x
