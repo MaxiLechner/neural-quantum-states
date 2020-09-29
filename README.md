@@ -5,5 +5,7 @@ For usage instructions try out the notebook.
 
 Follows broadly in the steps of:
 [Recurrent Neural Network Wavefunctions](https://arxiv.org/abs/2002.02973)
+
 [Iterative Retraining of Quantum Spin Models using Recurrent Neural Networks](https://arxiv.org/abs/2003.06228)
+
 [Deep autoregressive models for the efficient variational simulation of many-body quantum systems](https://arxiv.org/abs/1902.04057v3)
