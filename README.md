@@ -4,6 +4,7 @@ Both convnets and lstms are implemented. Built using [Jax](https://github.com/go
 For usage instructions try out the notebook.
 
 Follows broadly in the steps of:
+
 [Recurrent Neural Network Wavefunctions](https://arxiv.org/abs/2002.02973)
 
 [Iterative Retraining of Quantum Spin Models using Recurrent Neural Networks](https://arxiv.org/abs/2003.06228)
