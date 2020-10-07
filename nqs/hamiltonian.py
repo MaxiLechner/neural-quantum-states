@@ -41,7 +41,7 @@ def initialize_model_1d(
             https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
         )
 
-    net_dispatch = {"conv": conv, "lstm": lstm,"is_lstm": is_lstm}
+    net_dispatch = {"conv": conv, "lstm": lstm, "is_lstm": is_lstm}
 
     energy_dispatch = {
         "ising_1d": energy_ising_1d_init,
@@ -65,7 +65,7 @@ def initialize_model_1d(
                 use_one_hot=one_hot,
                 init_config=init_config,
             )
-        elif network == "lstm":
+        elif network == "lstm" or network == "is_lstm":
             module = net.partial(
                 hidden_size=hidden_size,
                 depth=depth,
