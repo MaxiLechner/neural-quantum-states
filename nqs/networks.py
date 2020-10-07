@@ -180,6 +180,49 @@ class lstm(nn.Module):
         return key, config
 
 
+class is_lstm(nn.Module):
+    def apply(self, x, init_config, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, depth, hidden_size, use_one_hot)
+        _, x = jax_utils.scan_in_dim(cell, carry, x, axis=1)
+        return x
+
+    def _init(self, init_config, depth, hidden_size, use_one_hot):
+        batch_size = init_config.shape[0]
+        # use dummy key as lstm is always initialized with all zeros
+        init_key = random.PRNGKey(0)
+        carry = nn.LSTMCell.initialize_carry(init_key, (batch_size,), hidden_size)
+        carry_list = [carry for i in range(depth)]
+        cell = MultiLSTMCell.partial(depth=depth, use_one_hot=use_one_hot)
+        return carry_list, cell
+
+    @nn.module_method
+    def sample(self, init_config, key, depth, hidden_size, use_one_hot):
+        carry, cell = self._init(init_config, depth, hidden_size, use_one_hot)
+
+        @jit
+        def body(i, loop_carry):
+            key, carry, config = loop_carry
+            carry, out = cell(carry, config[:, i, :])
+            probs = prob(out)
+            probs = 0.5 * probs + 0.25
+            key, subkey = random.split(key)
+            sample = random.bernoulli(subkey, probs[..., 1]) * 2 - 1.0
+            sample = sample[..., jnp.newaxis]
+            config = jax.ops.index_update(config, jax.ops.index[:, i + 1], sample)
+            return key, carry, config
+
+        # need to increase dimension of init_config by one in order to sample a state of
+        # length N as config[:,i+1] needs to depend on config[:,i].
+        a, _, c = init_config.shape
+        w = jnp.zeros((a, 1, c))
+        init_config = jnp.hstack([w, init_config])
+        key, _, config = lax.fori_loop(
+            0, init_config.shape[1], body, (key, carry, init_config)
+        )
+        config = config[:, 1:, :]
+        return key, config
+
+
 class Conv(nn.Module):
     def apply(self, x, depth, features, kernel_size, use_one_hot):
         if use_one_hot:
