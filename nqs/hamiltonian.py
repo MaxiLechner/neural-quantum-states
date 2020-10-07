@@ -52,6 +52,8 @@ def initialize_model_1d(
     key = random.PRNGKey(seed)
     key, subkey = random.split(key, 2)
     init_config = jnp.zeros((batch_size, num_spins, 1), dtype=f_dtype)
+    end = num_spins if pbc else num_spins - 1
+    end2 = num_spins if pbc else num_spins - 2
 
     try:
         net = net_dispatch[network]
@@ -80,9 +82,15 @@ def initialize_model_1d(
     try:
         energy_init = energy_dispatch[hamiltonian]
         if hamiltonian == "J1J2_1d":
-            energy_dict = {"J1": J, "J2": J2, "pbc": pbc, "c_dtype": c_dtype}
+            energy_dict = {
+                "J1": J,
+                "J2": J2,
+                "end1": end,
+                "end2": end2,
+                "c_dtype": c_dtype,
+            }
         else:
-            energy_dict = {"J": J, "pbc": pbc, "c_dtype": c_dtype}
+            energy_dict = {"J": J, "end": end, "c_dtype": c_dtype}
     except KeyError:
         print(
             f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d."
@@ -103,7 +111,7 @@ def initialize_model_1d(
     return (step, key, energy_fn, init_config, optimizer)
 
 
-def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
+def energy_ising_1d_init(J=None, end=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
@@ -120,8 +128,6 @@ def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
         logpsi = logpsi.astype(c_dtype)
 
         _, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
 
         idx = jnp.arange(N)
         E0 = jnp.sum(config[:, :end] * jnp.roll(config, -1, axis=1)[:, :end], axis=1)
@@ -133,7 +139,7 @@ def energy_ising_1d_init(J=None, pbc=None, c_dtype=None):
     return energy
 
 
-def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
+def energy_heisenberg_1d_init(J=None, end=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
@@ -149,8 +155,6 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
         logpsi = log_amplitude(model, config)
 
         _, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
 
         idx = jnp.arange(end)
         # sz*sz term
@@ -168,7 +172,7 @@ def energy_heisenberg_1d_init(J=None, pbc=None, c_dtype=None):
     return energy
 
 
-def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
+def energy_J1J2_1d_init(J1=None, J2=None, end1=None, end2=None, c_dtype=None):
     @jit
     def energy(model, config):
         @jit
@@ -184,9 +188,6 @@ def energy_J1J2_1d_init(J1=None, J2=None, pbc=None, c_dtype=None):
         logpsi = log_amplitude(model, config)
 
         _, N, _ = config.shape
-        # Can't use if statements in jitted code, need to use lax primitive instead.
-        end1 = jax.lax.cond(pbc, N, lambda x: x, N - 1, lambda x: x)
-        end2 = jax.lax.cond(pbc, N, lambda x: x, N - 2, lambda x: x)
 
         idx1 = jnp.arange(end1)
         idx2 = jnp.arange(end2)
