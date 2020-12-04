@@ -29,11 +29,9 @@ def initialize_model_1d(
     one_hot=True,
 ):
     if config.read("jax_enable_x64") and x64:
-        f_dtype = jnp.float64
-        c_dtype = jnp.complex128
+        dtype = jnp.float64
     elif not config.read("jax_enable_x64") and not x64:
-        f_dtype = jnp.float32
-        c_dtype = jnp.complex64
+        dtype = jnp.float32
     else:
         raise Exception(
             """To use x32/x64 mode, both the variable x64 and the environment variable
@@ -51,7 +49,7 @@ def initialize_model_1d(
 
     key = random.PRNGKey(seed)
     key, subkey = random.split(key, 2)
-    init_config = jnp.zeros((batch_size, num_spins, 1), dtype=f_dtype)
+    init_config = jnp.zeros((batch_size, num_spins, 1), dtype=dtype)
     end = num_spins if pbc else num_spins - 1
     end2 = num_spins if pbc else num_spins - 2
 
@@ -87,10 +85,9 @@ def initialize_model_1d(
                 "J2": J2,
                 "end1": end,
                 "end2": end2,
-                "c_dtype": c_dtype,
             }
         else:
-            energy_dict = {"J": J, "end": end, "c_dtype": c_dtype}
+            energy_dict = {"J": J, "end": end}
     except KeyError:
         print(
             f"{hamiltonian} is not a valid hamiltonian. You can choose between ising1d and heisenberg1d."
@@ -111,7 +108,7 @@ def initialize_model_1d(
     return (step, key, energy_fn, init_config, optimizer)
 
 
-def energy_ising_1d_init(J=None, end=None, c_dtype=None):
+def energy_ising_1d_init(J=None, end=None):
     @jit
     def energy(model, config):
         @jit
@@ -125,7 +122,6 @@ def energy_ising_1d_init(J=None, end=None, c_dtype=None):
         vmap_amplitude_diff = vmap(partial(amplitude_diff, config), out_axes=1)
 
         logpsi = log_amplitude(model, config)
-        logpsi = logpsi.astype(c_dtype)
 
         _, N, _ = config.shape
 
@@ -139,7 +135,7 @@ def energy_ising_1d_init(J=None, end=None, c_dtype=None):
     return energy
 
 
-def energy_heisenberg_1d_init(J=None, end=None, c_dtype=None):
+def energy_heisenberg_1d_init(J=None, end=None):
     @jit
     def energy(model, config):
         @jit
@@ -172,7 +168,7 @@ def energy_heisenberg_1d_init(J=None, end=None, c_dtype=None):
     return energy
 
 
-def energy_J1J2_1d_init(J1=None, J2=None, end1=None, end2=None, c_dtype=None):
+def energy_J1J2_1d_init(J1=None, J2=None, end1=None, end2=None):
     @jit
     def energy(model, config):
         @jit
