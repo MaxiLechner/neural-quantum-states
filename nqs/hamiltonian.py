@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 import flax
 
-from .networks import conv, lstm, is_lstm
+from .networks import conv, lstm
 from .optim import step_init
 from .wavefunction import log_amplitude
 
@@ -39,7 +39,7 @@ def initialize_model_1d(
             https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#Double-(64bit)-precision."""
         )
 
-    net_dispatch = {"conv": conv, "lstm": lstm, "is_lstm": is_lstm}
+    net_dispatch = {"conv": conv, "lstm": lstm}
 
     energy_dispatch = {
         "ising_1d": energy_ising_1d_init,
